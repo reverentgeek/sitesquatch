@@ -37,7 +37,8 @@ test("build_reports_in_json", () => {
 	assert.deepEqual(json.warnings, [
 		// console.warn in the config is one of the warnings.
 		{ code: "console", message: "pine cones are low" },
-		{ code: "schema", message: "src/posts/pine.md: `extra` isn't a field of this schema (schema `posts`)", file: "src/posts/pine.md", field: "extra" },
+		// DELIBERATE (0.16.2, the new docs site's rerun): the line that sets the field, as the text's frame shows it.
+		{ code: "schema", message: "src/posts/pine.md: `extra` isn't a field of this schema (schema `posts`)", file: "src/posts/pine.md", line: 3, field: "extra" },
 		{ code: "passthrough", message: "passthrough glob \"nothing/**\" matches no files" },
 		{ code: "links", message: "/posts/pine/ -> /nope/ (not found)", url: "/posts/pine/" },
 	]);

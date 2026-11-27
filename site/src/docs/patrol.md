@@ -30,6 +30,7 @@ Each warning has a code. The checks are the ones a build folder can answer from 
 | --- | --- |
 | `no-robots` | No `robots.txt`. `robotsPlugin()` writes one, with the sitemap's address and rules for AI crawlers ([Posted signs](robots.md)). |
 | `no-sitemap` | No `sitemap.xml`, and `robots.txt` names none. `sitemapPlugin({ url })` writes one. |
+| `placeholder-url` | The site's address is still a placeholder, `https://example.com` (or example.net or example.org): its canonical links, sitemap, `robots.txt` or `llms.txt` point there, not at the site. A starter's address is `url` in `src/_data/site.json`; set it to the real one before deploying. `.example` addresses, which tests use, don't count. |
 | `no-404` | No `404.html`, or one that's the home page. A missing page should say so, with a 404 status: a page with `permalink: /404.html`. |
 | `no-llms` | No `llms.txt`. `llmsPlugin()` writes it, with a Markdown copy of each page. |
 | `llms-shape` | `llms.txt` doesn't start with a `# ` heading (the site's name), the one part llmstxt.org's format requires. |

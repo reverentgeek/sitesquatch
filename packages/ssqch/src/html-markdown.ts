@@ -155,11 +155,29 @@ function escapeLineStart(line: string): string {
 /** A heading's link to itself (`<a class="anchor" href="#x">#</a>`): only a symbol, pointing at a fragment. */
 const selfLink = (el: Element) => el.name === "a" && (el.attrs.get("href") ?? "").startsWith("#") && !/[\p{L}\p{N}]/u.test(textOf(el));
 
+/**
+ * A formula ssqch's Markdown wrote (`markdown.math`), as the TeX it was: KaTeX keeps it in an
+ * `<annotation>` when it rendered it at build time (its MathML is left out, and the rest is
+ * `aria-hidden`, so the formula would be gone), and otherwise it's between `\(` and `\)`, or `\[`
+ * and `\]`.
+ */
+function mathOf(el: Element): { tex: string; display: boolean } | undefined {
+	const classes = ` ${el.attrs.get("class") ?? ""} `.replace(/\s+/g, " ");
+	if (!classes.includes(" math ")) return undefined;
+	const display = classes.includes(" math-display ");
+	if (!display && !classes.includes(" math-inline ")) return undefined;
+	const annotation = find(el, "annotation");
+	const tex = annotation ? textOf(annotation) : textOf(el).trim().replace(display ? /^\\\[([\s\S]*)\\\]$/ : /^\\\(([\s\S]*)\\\)$/, "$1");
+	return { tex: tex.trim(), display };
+}
+
 function inline(nodes: Node[], inHeading = false): string {
 	let out = "";
 	for (const n of nodes) {
 		if (typeof n === "string") { out += escape(n.replace(/\s+/g, " ")); continue; }
 		if (skipped(n)) continue;
+		const math = mathOf(n);
+		if (math) { out += math.display ? `$$${math.tex}$$` : `$${math.tex}$`; continue; }
 		switch (n.name) {
 			case "br": out += "\\\n"; break;
 			case "img": {
@@ -277,6 +295,8 @@ function block(el: Element): string[] {
 		const text = inline(el.children, true).replace(/\s+/g, " ").trim();
 		return text ? [`${"#".repeat(Number(heading[1]))} ${text}`] : [];
 	}
+	const math = name === "div" ? mathOf(el) : undefined;
+	if (math?.display) return [`$$\n${math.tex}\n$$`];
 	switch (name) {
 		case "p": { const t = paragraph(inline(el.children)); return t ? [t] : []; }
 		case "hr": return ["---"];

@@ -711,7 +711,11 @@ const DATE_ONLY = /^([+-]?\d{1,6})-(\d{1,2})-(\d{1,2})$/;
 const NAIVE = /^([+-]?\d{1,6})-(\d{1,2})-(\d{1,2})[T ](\d{1,2}):(\d{1,2})(?::(\d{1,2})(\.\d+)?)?$/;
 
 export function parseDate(text: string): Date | undefined {
-	const s = text.trim();
+	let s = text.trim();
+	// Hexo's and moment's slashes (`2026/05/08`, `2026/05/08 12:00`) are the dashed form: read the
+	// same way, so a day is that day in `timeZone` and a time without a zone is UTC (hexo.io #9).
+	const slashed = /^(\d{4})\/(\d{1,2})\/(\d{1,2})(?=$|[Tt ])/.exec(s);
+	if (slashed) s = `${slashed[1]}-${slashed[2]}-${slashed[3]}${s.slice(slashed[0].length)}`;
 	let m = RFC3339.exec(s);
 	if (m) {
 		const utc = utcMs(m[1], m[2], m[3], m[4], m[5], m[6], m[7]);

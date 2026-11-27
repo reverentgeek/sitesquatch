@@ -1,5 +1,5 @@
 {
-  "version": "0.15.1",
+  "version": "0.16.1",
   "ok": true,
   "report": {
     "schemaVersion": 1,
@@ -87,7 +87,7 @@
     "errors": [],
     "timings": "(left out)"
   },
-  "log": "First confirmed sighting. Built in <time> (production)\n  Pages     21 written from 16 templates, 127 KB\n  Copied    1 file, 4.41 KB\n  Elements  1 defined, 1 used on 1 page\n  Images    83 files from 13 sources, <size>: 83 encoded, 0 reused\n  Assets    3 fingerprinted (site.037c4992.css, price-toggle.56cfebd3.js, price-toggle.e1641879.css)\n  Links     974 checked, 0 broken\n  Output    dist: 129 files, <size>\n",
+  "log": "First confirmed sighting. Built in <time> (production)\n  Pages     21 written from 16 templates, 127 KB\n  Copied    1 file, 4.41 KB\n  Elements  1 defined, 1 used on 1 page\n  Images    83 files from 13 sources, <size>: 83 encoded, 0 reused\n  Assets    3 fingerprinted (site.037c4992.css, price-toggle.56cfebd3.js, price-toggle.e1641879.css)\n  Links     974 checked, 0 broken\n  Output    dist: 129 files, <size>\nnote: `lastModified: \"git\"`, but the project isn't in a git repository, so 21 pages use their files' times for page.lastModified, and none has page.updated. `git init` and a first commit date them\n",
   "files": {
     "404.html": "text",
     "_headers": "text",

@@ -50,7 +50,8 @@ test("errors_name_their_file_and_line", () => {
 		]), "checking content");
 		assert.equal(held.message, "checking content: 2 content errors");
 		const found = fromError(held, "build", at);
-		assert.deepEqual(toJson(found[0]), { code: "schema", message: "src/page.edge: `title` is required", file: "src/page.edge", field: "title" });
+		// The field's line, where its frame points (the page sets `title` on line 2), so the JSON has it too.
+		assert.deepEqual(toJson(found[0]), { code: "schema", message: "src/page.edge: `title` is required", file: "src/page.edge", line: 2, field: "title" });
 		assert.deepEqual(toJson(found[1]), { code: "front-matter", message: "in page.edge: front matter is missing its closing `---`", file: "src/page.edge" });
 
 		// The lines an error is about: the file's own line, with carets under what the message quotes.

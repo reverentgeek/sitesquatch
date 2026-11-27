@@ -26,6 +26,7 @@ import { hearOpened } from "./engines/engine.ts";
 import { hearSiteReads } from "./serve/site-reads.ts";
 import type { RenderContext } from "./engines/engine.ts";
 import { beginFenceCache, rendering as markdownRendering, saveFenceCache, writeHighlightCss } from "./engines/markdown.ts";
+import { templateCodeInMath } from "./engines/math.ts";
 import * as equivalents from "./equivalents.ts";
 import { measure, overBudget } from "./footprint.ts";
 import { globBase, globSet, isGlob } from "./glob.ts";
@@ -115,6 +116,8 @@ export async function build(config: Config): Promise<BuildReport> {
 	const collectionIncludes = includesUsingCollections(site);
 	const overCollections = (p: Page) => typeof p.data.pagination?.data === "string" && p.data.pagination.data.startsWith("collections.");
 	const wanted = pages.filter((p) => p.output !== null || p.inCollections);
+	gitDatesNote(site, wanted);
+	warnTemplateCodeInMath(site);
 	const includesKey = [...collectionIncludes].sort(compareText).join("\0");
 	const late = new Set(wanted.filter((p) => usesCollectionsKept(p.tpl, collectionIncludes, includesKey) || overCollections(p)));
 	await site.buildCollections();
@@ -326,7 +329,47 @@ let renderedCount: [number, number, string?] = [0, 0];
 export const lastRendered = (): [number, number, string?] => renderedCount;
 
 /** Whether this process has said why an undated page's save rendered the pages that list it. */
+/**
+ * With `markdown.math`: a formula with template code in it, on a page a template engine reads
+ * before Markdown (`.md` through Jinja, the default), comes out without it and without a word:
+ * `\frac{{a}}{b}` is `\frac{b}`. Said once a page, with the first formula's line and the fixes.
+ */
+function warnTemplateCodeInMath(site: Site): void {
+	if (!site.markdown.math || site.config.quiet) return;
+	for (const tpl of site.tpls) {
+		const at = tpl.engines.indexOf("md");
+		if (at <= 0 || tpl.engines.slice(0, at).every((e) => e === "html" || e === "txt")) continue;
+		const found = templateCodeInMath(tpl.body);
+		if (!found.length) continue;
+		const file = site.display(tpl.input);
+		const line = found[0].line + tpl.bodyLine - 1;
+		const more = found.length > 1 ? ` (and ${found.length - 1} more formula${found.length === 2 ? "" : "s"} on this page)` : "";
+		warn(warning("template", `${file}:${line}: the formula $${found[0].tex}$ has template code in it (\`{{\`, \`{%\` or \`{#\`), which ${tpl.engines[0]} reads before Markdown, so it won't reach the page as written${more}. Put a space between the braces (\`\\frac{ {a} }{b}\`, which TeX ignores), wrap it in \`{% raw %}\`, or give the page \`render: md\``, { file, line }));
+	}
+}
+
 let saidUndated = false;
+let saidGitDates = false;
+
+/**
+ * Once a build (once while serving): the dates from git came from the files' times, because the
+ * project has no commits to read. Not a warning, since a site made with `ssqch init` builds before
+ * anyone runs `git init` and nothing is wrong; a note, because a post's dates aren't the ones
+ * it'll have once it's committed, and an agent checking the page should know why.
+ */
+function gitDatesNote(site: Site, wanted: Page[]): void {
+	const { config } = site;
+	const why = site.gitProjectNote;
+	if (saidGitDates || config.quiet || isCapturing() || why === undefined) return;
+	const pages = wanted.filter((page) => page.output !== null).length;
+	if (pages === 0) return;
+	saidGitDates = true;
+	const fix = why === "the repository has no commits yet" ? "A first commit dates them" : "`git init` and a first commit date them";
+	const what = config.lastModified === "git"
+		? `${count(pages)} page${pages === 1 ? "" : "s"} use${pages === 1 ? "s" : ""} ${pages === 1 ? "its file's time" : "their files' times"} for page.lastModified, and none has page.updated`
+		: "pages with no date of their own use their files' times";
+	process.stderr.write(`note: \`${config.lastModified === "git" ? "lastModified" : "dateFallback"}: "git"\`, but ${why}, so ${what}. ${fix}\n`);
+}
 
 /**
  * While serving, once: a save to a page with no date of its own moved its date (its file's time),
@@ -1259,13 +1302,18 @@ function checkForeignGlobals(site: Site): void {
 	// Each template's text, with the pages it makes (none for layouts and includes).
 	const sources: Array<[string, string, Tpl | undefined]> = [];
 	const seen = new Set<string>();
+	// A language the site's own engine renders (`engines: { njk }`) has the globals that engine
+	// gives it: hexo.io's move rendered Hexo's theme with Hexo's Nunjucks, whose `site.posts` is
+	// Hexo's, and was told it was Jekyll's and empty.
+	const own = (ext: string) => site.config.engines.has(ext);
 	for (const tpl of site.tpls) {
 		// A page no template language reads (`render: md`, plain HTML) prints `{{ eleventy.generator }}`
 		// as it's written: a page about another generator, not a use of it. Its layouts still count.
-		if (tpl.engines.some((e) => e !== "md" && e !== "html" && e !== "txt")) sources.push([site.display(tpl.input), tpl.body, tpl]);
+		if (tpl.engines.some((e) => e !== "md" && e !== "html" && e !== "txt" && !own(e))) sources.push([site.display(tpl.input), tpl.body, tpl]);
 		for (const layout of tpl.layouts) {
 			if (seen.has(layout.path)) continue;
 			seen.add(layout.path);
+			if (own(path.extname(layout.path).slice(1).toLowerCase())) continue;
 			sources.push([site.display(layout.path), layout.body, undefined]);
 		}
 	}

@@ -29,6 +29,7 @@ import { TABLE } from "./equivalents.ts";
 import { jinjaFilters } from "./engines/jinja.ts";
 import { readMkdocsYaml as readMkdocsData } from "./mkdocs.ts";
 import { importFile } from "./modules.ts";
+import * as api from "./api.ts";
 import { baselineTime } from "./commands/baseline.ts";
 import { BUILTIN_FILTERS } from "./filters.ts";
 import { JsonText } from "./json-edit.ts";
@@ -94,8 +95,10 @@ const GENERATORS: Record<string, { name: string; build: string; output: string }
 	astro: { name: "Astro", build: "npx astro build", output: "dist" },
 	vitepress: { name: "VitePress", build: "npx vitepress build", output: ".vitepress/dist" },
 	hexo: { name: "Hexo", build: "npx hexo generate", output: "public" },
+	gatsby: { name: "Gatsby", build: "npx gatsby build", output: "public" },
+	next: { name: "Next.js", build: "npx next build", output: "out" },
 };
-const ALIASES: Record<string, string> = { "11ty": "eleventy" };
+const ALIASES: Record<string, string> = { "11ty": "eleventy", nextjs: "next", "next.js": "next" };
 
 export interface ScoutOptions {
 	/** The generator, when it isn't the one scout finds (`--from`). */
@@ -129,9 +132,13 @@ export interface Comparison {
 /** Builds the site with ssqch (as a command, so its config runs as it would) and compares the output with the reference build. */
 function compareBuilds(dir: string, given: string): Comparison {
 	const cache = path.join(dir, ".cache/ssqch/baseline");
-	const reference = given !== "" ? given : fs.existsSync(path.join(cache, "ref-common")) ? ".cache/ssqch/baseline/ref-common" : ".cache/ssqch/baseline/ref-1";
+	// `--reference` is a path as typed, from where scout runs (redux.js.org's move ran it from the
+	// repository's root for `website/`, and was told "no reference build in" a folder that was there).
+	// It's tried from the scouted folder first, as it always was, then from where scout runs.
+	const fromHere = given !== "" && !isDir(path.resolve(dir, given)) && isDir(path.resolve(given));
+	const reference = given === "" ? (fs.existsSync(path.join(cache, "ref-common")) ? ".cache/ssqch/baseline/ref-common" : ".cache/ssqch/baseline/ref-1") : fromHere ? path.resolve(given) : given;
 	const none: Comparison = { reference, output: null, built: false, errors: [], same: false, summary: null, groups: [], files: { changed: [], added: [], removed: [] }, problem: null };
-	if (!isDir(path.resolve(dir, reference))) return { ...none, problem: `there's no reference build in ${reference}: \`ssqch baseline "<the old build command>"\` makes one` };
+	if (!isDir(path.resolve(dir, reference))) return { ...none, problem: `there's no reference build in ${given !== "" ? `${given} (looked in ${path.resolve(dir, given)}${path.resolve(given) !== path.resolve(dir, given) ? ` and ${path.resolve(given)}` : ""})` : reference}: \`ssqch baseline "<the old build command>"\` makes one` };
 	// Pinned as \`ssqch baseline\` pins the reference: UTC, and the build's time the commit's, so
 	// a sitemap's or a feed's dates aren't a difference of their own.
 	const run = (args: string[]) => spawnSync(process.execPath, [...process.execArgv, process.argv[1], ...args], { cwd: dir, encoding: "utf8", env: { ...process.env, TZ: "UTC", SOURCE_DATE_EPOCH: process.env.SOURCE_DATE_EPOCH ?? String(baselineTime(dir)) }, maxBuffer: 1 << 30 });
@@ -170,6 +177,14 @@ export function detect(dir: string): Array<[string, string]> {
 	const astro = ["astro.config.mjs", "astro.config.js", "astro.config.ts", "astro.config.mts"].find(has);
 	if (astro) found.push(["astro", astro]);
 	if (has(".vitepress") || has("docs/.vitepress")) found.push(["vitepress", has(".vitepress") ? ".vitepress" : "docs/.vitepress"]);
+	// Gatsby and Next.js: the trailhead for component frameworks covers them, and `ssqch build` in
+	// their folder sent people here, where scout refused them (a Gatsby blog's move, 2026-11-27).
+	const gatsby = ["gatsby-config.js", "gatsby-config.ts", "gatsby-config.mjs"].find(has);
+	if (gatsby) found.push(["gatsby", gatsby]);
+	else if (deps.has("gatsby")) found.push(["gatsby", "package.json (gatsby)"]);
+	const next = ["next.config.js", "next.config.mjs", "next.config.ts"].find(has);
+	if (next) found.push(["next", next]);
+	else if (deps.has("next")) found.push(["next", "package.json (next)"]);
 	const jekyllConfig = ["_config.yml", "_config.yaml", "_config.toml"].find(has);
 	if (jekyllConfig && deps.has("hexo")) found.push(["hexo", `${jekyllConfig} and package.json (hexo)`]);
 	else if (jekyllConfig) found.push(["jekyll", jekyllConfig]);
@@ -197,7 +212,8 @@ export async function runScout(dir: string, options: ScoutOptions): Promise<numb
 		} else {
 			const found = detect(dir);
 			if (found.length === 0) {
-				const ssqch = findConfig(dir) !== undefined ? ": it has an ssqch.config.js, and nothing of another generator's, so the move may be done" : "";
+				const own = findConfig(dir);
+				const ssqch = own !== undefined ? `: it has ${path.basename(own)}, and nothing of another generator's, so the move may be done` : "";
 				fail(`couldn't tell which generator builds the site in ${dir}${ssqch}. Name it with --from (${Object.keys(GENERATORS).join(", ")})`);
 			}
 			if (found.length > 1) fail(`more than one generator's files are in ${dir} (${found.map(([g, file]) => `${GENERATORS[g].name}: ${file}`).join("; ")}): choose with --from`);
@@ -278,6 +294,8 @@ export interface Report {
 	edits: Array<{ path: string; to?: string; changes: string[] }>;
 	/** Whether the site has an ssqch.config.js already: a move under way. */
 	underWay: boolean;
+	/** The config's file name when it has one (`ssqch.config.mjs`), for the text: not in the JSON. */
+	configName?: string;
 	/** The to-dos the site's config does already (an option it sets, a filter or collection it defines, a package it keeps): out of `todo`, and counted in `summary.done`. `option` says what in the config did it. */
 	done: Array<{ at: string; what: string; code: string; option: string }>;
 	/** Why the site's config couldn't be read, when it couldn't: then nothing counts as done. */
@@ -300,6 +318,10 @@ export async function siteConfig(dir: string): Promise<SiteConfig> {
 		if (code === "MODULE_TYPELESS_PACKAGE_JSON") return;
 		return (emitWarning as (...args: unknown[]) => void).call(process, warning, ...rest);
 	}) as typeof process.emitWarning;
+	// `readData("src/_data/site.json")` in the config is from the site's root, as a build sets it:
+	// scouting `website/` from the repository's root failed there (redux.js.org's move).
+	const was = { ...api.site };
+	Object.assign(api.site, { root: path.resolve(dir), input: null, base: "", markdown: null });
 	try {
 		let value = (await importFile(file)).default;
 		// A config can be a function of the build (`({ env, serving }) => ({...})`), as `ssqch build`
@@ -311,6 +333,7 @@ export async function siteConfig(dir: string): Promise<SiteConfig> {
 		return { error: `${path.basename(file)}: ${e instanceof Error ? e.message.split("\n")[0] : String(e)}` };
 	} finally {
 		process.emitWarning = emitWarning;
+		Object.assign(api.site, was);
 	}
 }
 
@@ -427,6 +450,7 @@ export function scoutReport(plan: Plan, dir: string, id: string, how: string, si
 		draft: plan.newFiles.map(([file, from]) => ({ path: file, from, there: fs.existsSync(path.join(dir, file)) || (file === "ssqch.config.js" && findConfig(dir) !== undefined) })),
 		edits,
 		underWay: findConfig(dir) !== undefined,
+		configName: (() => { const own = findConfig(dir); return own === undefined ? undefined : path.basename(own); })(),
 		done,
 		configError: site.error ?? null,
 	};
@@ -454,7 +478,7 @@ function referenceBuild(dir: string, id: string): { command: string; output: str
 	try { pkgJson = JSON.parse(readUtf8(path.join(dir, "package.json")) ?? "{}"); scripts = (pkgJson as { scripts?: Record<string, string> }).scripts ?? {}; } catch { /* no package.json */ }
 	// `pnpm run build` for a pnpm site (vuejs.org's `preinstall` refuses npm).
 	const pm = packageManager(dir, pkgJson);
-	const words: Record<string, RegExp> = { eleventy: /\beleventy\b/, jekyll: /\bjekyll\b/, hugo: /\bhugo\b/, zola: /\bzola\b/, mkdocs: /\bmkdocs\b/, docusaurus: /\bdocusaurus\b/, astro: /\bastro\b/, vitepress: /\bvitepress\b/, hexo: /\bhexo\b/ };
+	const words: Record<string, RegExp> = { eleventy: /\beleventy\b/, jekyll: /\bjekyll\b/, hugo: /\bhugo\b/, zola: /\bzola\b/, mkdocs: /\bmkdocs\b/, docusaurus: /\bdocusaurus\b/, astro: /\bastro\b/, vitepress: /\bvitepress\b/, hexo: /\bhexo\b/, gatsby: /\bgatsby\b/, next: /\bnext\b/ };
 	// The script that builds the site: `build`, or another that runs the generator (a11yproject.com's
 	// `publish`), and not one that watches. Mid-move, scout's patch made it run `ssqch build`, which
 	// stands for the generator's command again.
@@ -472,7 +496,8 @@ function referenceBuild(dir: string, id: string): { command: string; output: str
 		if (parts.length > 1) command = parts.map((p) => (/\bssqch\s+build\b/.test(p) ? g.build : p)).join(" && ");
 		else if (!own) command = `${pm} run ${named}`;
 	}
-	if (netlifyPublish && command === netlifyCommand) output = netlifyPublish.replace(/^\.\//, "").replace(/\/$/, "");
+	// Netlify's `publish` is from the base folder, written `public`, `./public` or `/public` (hexo.io's).
+	if (netlifyPublish && command === netlifyCommand) output = netlifyPublish.replace(/^\.?\/+/, "").replace(/\/$/, "");
 	// Eleventy's output folder, from its config (`dir: { output: "dist" }`).
 	if (id === "eleventy") {
 		const config = ELEVENTY_CONFIGS.find((name) => isFile(path.join(dir, name)));
@@ -491,7 +516,7 @@ function referenceBuild(dir: string, id: string): { command: string; output: str
 		output = outDir !== undefined ? path.posix.normalize(`${root}${outDir.replace(/^\.\//, "")}`).replace(/\/+$/, "") : `${root}.vitepress/dist`;
 	}
 	// The Node the site asks for: an old generator may need it, and ssqch needs 22.18 or later.
-	if (["eleventy", "docusaurus", "astro", "vitepress", "hexo"].includes(id)) {
+	if (["eleventy", "docusaurus", "astro", "vitepress", "hexo", "gatsby", "next"].includes(id)) {
 		let engines: unknown;
 		try { engines = JSON.parse(readUtf8(path.join(dir, "package.json")) ?? "{}").engines?.node; } catch { /* no package.json */ }
 		const pinned: Array<[string, string | undefined]> = [[".nvmrc", readUtf8(path.join(dir, ".nvmrc"))], [".node-version", readUtf8(path.join(dir, ".node-version"))], ["netlify.toml", /\bNODE_VERSION\s*=\s*"([^"]+)"/.exec(netlify)?.[1]], ["package.json's engines", typeof engines === "string" ? engines : undefined]];
@@ -529,7 +554,7 @@ function doneList(done: Report["done"]): string {
 
 /** The report, as the terminal shows it. */
 export function scoutText(report: Report, options: Pick<ScoutOptions, "writeDraft" | "patch">): string {
-	let out = `Scouting the ${report.name} site in ${report.dir} (found ${report.detectedBy === "--from" ? "with --from" : report.detectedBy})${report.underWay ? ": a move under way, with an ssqch.config.js" : ""}\n`;
+	let out = `Scouting the ${report.name} site in ${report.dir} (found ${report.detectedBy === "--from" ? "with --from" : report.detectedBy})${report.underWay ? `: a move under way, with ${report.configName ?? "an ssqch config"}` : ""}\n`;
 	const { summary } = report;
 	if (report.todo.length) out += `\n${report.todo.length} to do${summary.pages !== null ? ` across ${summary.pages} ${summary.pages === 1 ? "page" : "pages"}` : ""}: ${[[summary.ssqch, "ssqch does"], [summary.option, "an option does (the draft turns it on)"], [summary.notYet, "not in ssqch yet"], [summary.site, "the site's own code to port"]].filter(([n]) => n).map(([n, what]) => `${n} ${what}`).join(", ")}.\n`;
 	if (report.done.length) out += `${report.todo.length ? "" : "\n"}${report.done.length} done already: ssqch.config.js has ${doneList(report.done)}.\n`;
@@ -1836,7 +1861,7 @@ const LOCKFILES: ReadonlyArray<readonly [string, readonly string[]]> = [["pnpm",
 const packageManagerField = (pkg: unknown) => (isPlainObject(pkg) && typeof pkg.packageManager === "string" ? pkg.packageManager : undefined);
 
 /** The package manager a site uses: `packageManager` in package.json, or the lockfile that's there. */
-function packageManager(dir: string, pkg: unknown): string {
+export function packageManager(dir: string, pkg: unknown): string {
 	const named = (packageManagerField(pkg) ?? "").split("@")[0];
 	const byName = LOCKFILES.find(([pm]) => named === pm);
 	if (byName) return byName[0];
@@ -2185,7 +2210,7 @@ export function tomlError(e: unknown, text: string): string {
 const JEKYLL_EXCLUDES = [".sass-cache", ".jekyll-cache", "gemfiles", "Gemfile", "Gemfile.lock", "node_modules", "vendor/bundle", "vendor/cache", "vendor/gems", "vendor/ruby"];
 
 /** `page.<key>` that's the page's own in ssqch too (its facts, not its front matter): left as it is. */
-const PAGE_KEYS = new Set(["url", "date", "excerpt", "inputPath", "outputPath", "fileSlug", "filePathStem", "headings", "lastModified"]);
+const PAGE_KEYS = new Set(["url", "date", "excerpt", "inputPath", "outputPath", "fileSlug", "filePathStem", "headings", "lastModified", "updated"]);
 
 /** `page.<key>` Jekyll fills in itself, which ssqch's `page` doesn't have: what each is in ssqch. */
 const JEKYLL_PAGE: Record<string, string> = {
@@ -3194,24 +3219,26 @@ function dumpYaml(nav: Data[], indent = ""): string {
 	return out;
 }
 
-const TRAILHEADS: Record<string, string> = { docusaurus: "from-docusaurus", hexo: "from-hexo", astro: "from-component-frameworks", vitepress: "from-vitepress" };
+const TRAILHEADS: Record<string, string> = { docusaurus: "from-docusaurus", hexo: "from-hexo", astro: "from-component-frameworks", gatsby: "from-component-frameworks", next: "from-component-frameworks", vitepress: "from-vitepress" };
 
 /** Counts a pattern across files: how many uses, in how many files, and the first. */
-function countIn(entries: Entry[], pattern: RegExp): { count: number; files: number; first?: string } {
+function countIn(entries: Entry[], pattern: RegExp, prose = false): { count: number; files: number; first?: string } {
 	let count = 0;
 	let first: string | undefined;
 	const files = new Set<string>();
 	for (const entry of entries) {
-		const text = readUtf8(entry.abs) ?? "";
+		const read = readUtf8(entry.abs) ?? "";
+		// With `prose`, what's in code (fences, and spans) is blanked: a page about the tags isn't a use of them.
+		const text = prose ? read.replace(/^(\s*)(`{3,}|~{3,})[^\n]*\n[\s\S]*?^\1\2[ \t]*$/gm, (m) => m.replace(/[^\n]/g, " ")).replace(/`[^`\n]+`/g, (m) => " ".repeat(m.length)) : read;
 		for (const m of text.matchAll(pattern)) { count++; files.add(entry.rel); first ??= lineAt(entry, text, m.index!); }
 	}
 	return { count, files: files.size, first };
 }
 
 /** One row per pattern that turns up: what it is, and ssqch's way. */
-function listSyntax(plan: Plan, entries: Entry[], rows: Array<[string, RegExp, string, string, NonNullable<Todo["status"]>]>): void {
+function listSyntax(plan: Plan, entries: Entry[], rows: Array<[string, RegExp, string, string, NonNullable<Todo["status"]>]>, prose = false): void {
 	for (const [what, pattern, say, code, status] of rows) {
-		const { count, files, first } = countIn(entries, new RegExp(pattern.source, pattern.flags.includes("g") ? pattern.flags : `${pattern.flags}g`));
+		const { count, files, first } = countIn(entries, new RegExp(pattern.source, pattern.flags.includes("g") ? pattern.flags : `${pattern.flags}g`), prose);
 		if (first) plan.byHand.push([first, `${what} (${uses(count, files)}): ${say}`, { code, status, count, files }]);
 	}
 }
@@ -3224,7 +3251,7 @@ function packagesLike(dir: string, pattern: RegExp): string[] {
 	} catch { return []; }
 }
 
-const SKIP_BUILT = (name: string) => name.startsWith(".git") || name === "node_modules" || name === ".cache" || name === "build" || name === "dist" || name === ".docusaurus" || name === ".astro";
+const SKIP_BUILT = (name: string) => name.startsWith(".git") || name === "node_modules" || name === ".cache" || name === "build" || name === "dist" || name === ".docusaurus" || name === ".astro" || name === ".next";
 
 const VITEPRESS_CONFIGS = [".vitepress/config.ts", ".vitepress/config.mts", ".vitepress/config.js", ".vitepress/config.mjs", "docs/.vitepress/config.ts", "docs/.vitepress/config.mts", "docs/.vitepress/config.js", "docs/.vitepress/config.mjs"];
 
@@ -3439,7 +3466,7 @@ export function vitepress(dir: string): Plan {
 }
 
 /**
- * Docusaurus, Astro and Hexo: what their pages use, counted, with ssqch's way to do
+ * Docusaurus, Astro, Hexo, Gatsby and Next.js: what their pages use, counted, with ssqch's way to do
  * each. These are lighter than the others (no draft yet): a fresh move of each is the next step
  * to find what an agent needs listed.
  */
@@ -3451,9 +3478,9 @@ export function other(dir: string, id: string): Plan {
 	plan.pages = pages.length;
 	if (id === "docusaurus") {
 		const mdx = pages.filter((e) => e.name.endsWith(".mdx"));
-		if (mdx.length) plan.byHand.push([mdx[0].rel, `${mdx.length} MDX ${mdx.length === 1 ? "page" : "pages"}: ssqch's Markdown doesn't run JSX; their components become Edge components or containers (\`ssqch docs --from docusaurus\`)`, { code: "docusaurus-mdx", status: "site", files: mdx.length }]);
+		if (mdx.length) plan.byHand.push([mdx[0].rel, `${mdx.length} MDX ${mdx.length === 1 ? "page" : "pages"}: as \`.md\` pages, \`reactPlugin()\` from "ssqch/react" renders the components they import with the site's own React; MDX's expressions and \`export\`s need the site's \`@mdx-js/mdx\` as an engine (\`ssqch docs --from docusaurus\`)`, { code: "docusaurus-mdx", status: "site", files: mdx.length }]);
 		listSyntax(plan, pages, [
-			["`import` of components in pages", /^import\s+[\w{},\s*]+\s+from\s+['"][^'"]+['"];?\s*$/m, "not in ssqch yet as written: Edge components (`@component(...)`) or containers", "docusaurus-imports", "not-yet"],
+			["`import` of components in pages", /^import\s+[\w{},\s*]+\s+from\s+['"][^'"]+['"];?\s*$/m, "the site's own components: `reactPlugin()` from \"ssqch/react\" reads them as they're written, in a `.md` page (`@site/` through its `esbuild.alias`, and a stand-in for each `@docusaurus/` module they import); Docusaurus's own `@theme/` components don't run outside it, and become containers (`ssqch docs --from docusaurus`)", "docusaurus-imports", "site"],
 			["`<Tabs>` and `<TabItem>`", /<Tabs\b/, "tabs from containers (the versioned-docs example has them)", "docusaurus-tabs", "ssqch"],
 			["admonitions (`:::note`)", /^:::(?:note|tip|info|warning|danger|caution)\b/m, "containers, built in: `_includes/containers/note.*` gives each its markup", "docusaurus-admonitions", "ssqch"],
 			["`<!-- truncate -->` and `{/* truncate */}`", /<!--\s*truncate\s*-->|\{\/\*\s*truncate\s*\*\/\}/, "an excerpt's end: ssqch's marker is `<!-- more -->`", "docusaurus-truncate", "not-yet"],
@@ -3467,19 +3494,105 @@ export function other(dir: string, id: string): Plan {
 		const astro = entries.filter((e) => e.name.endsWith(".astro"));
 		if (astro.length) plan.byHand.push([astro[0].rel, `${astro.length} \`.astro\` ${astro.length === 1 ? "component" : "components"} to port: ssqch doesn't run them; layouts and components become templates (Edge's components are closest), and their scripts custom elements from \`ssqch/elements\``, { code: "astro-components", status: "site", files: astro.length, docs: "--from astro" }]);
 		const islands = entries.filter((e) => /\.(jsx|tsx|vue|svelte)$/.test(e.name) && !e.rel.startsWith("node_modules"));
-		if (islands.length) plan.byHand.push([islands[0].rel, `${islands.length} framework ${islands.length === 1 ? "component" : "components"} (React, Vue, Svelte): islands in ssqch are custom elements whose scripts load where they're used (the islands example)`, { code: "astro-islands", status: "site", files: islands.length }]);
+		if (islands.length) plan.byHand.push([islands[0].rel, `${islands.length} framework ${islands.length === 1 ? "component" : "components"} (React, Vue, Svelte): React's render with \`reactPlugin()\` from "ssqch/react" (\`hydrate\` for islands), Vue's with \`vuePlugin()\`, and the others become custom elements whose scripts load where they're used (the islands example)`, { code: "astro-islands", status: "site", files: islands.length }]);
 		const collections = ["src/content/config.ts", "src/content.config.ts", "src/content/config.mjs"].find((f) => isFile(path.join(dir, f)));
 		if (collections) plan.byHand.push([collections, "content collections with schemas: ssqch's are collections and `schemas` (`ssqch docs schemas`)", { code: "astro-content-collections", status: "ssqch", docs: "schemas" }]);
-		listSyntax(plan, pages, [["`import` in MDX pages", /^import\s+.+\s+from\s+['"][^'"]+['"]/m, "not in ssqch yet as written: Edge components or containers", "astro-mdx-imports", "not-yet"]]);
-		for (const pkg of packagesLike(dir, /^@astrojs\//)) plan.byHand.push(["package.json", `${pkg}: ${/sitemap/.test(pkg) ? "`sitemapPlugin()` from \"ssqch/sitemap\"" : /mdx/.test(pkg) ? "MDX pages: see the MDX line" : /rss/.test(pkg) ? "`rssPlugin()` from \"ssqch/rss\"" : /react|vue|svelte|preact|solid/.test(pkg) ? "framework islands: custom elements" : "not in ssqch yet: port it as a plugin"}`, { code: "astro-integration", status: /sitemap|rss/.test(pkg) ? "ssqch" : "site" }]);
+		listSyntax(plan, pages, [["`import` in MDX pages", /^import\s+.+\s+from\s+['"][^'"]+['"]/m, "React components: `reactPlugin()` from \"ssqch/react\" reads the imports in a `.md` page; other frameworks' become templates or custom elements", "astro-mdx-imports", "ssqch"]]);
+		for (const pkg of packagesLike(dir, /^@astrojs\//)) plan.byHand.push(["package.json", `${pkg}: ${/sitemap/.test(pkg) ? "`sitemapPlugin()` from \"ssqch/sitemap\"" : /mdx/.test(pkg) ? "MDX pages: see the MDX line" : /rss/.test(pkg) ? "`rssPlugin()` from \"ssqch/rss\"" : /react/.test(pkg) ? "`reactPlugin()` from \"ssqch/react\"" : /vue/.test(pkg) ? "`vuePlugin()` from \"ssqch/vue\"" : /svelte|preact|solid/.test(pkg) ? "framework islands: custom elements" : "not in ssqch yet: port it as a plugin"}`, { code: "astro-integration", status: /sitemap|rss/.test(pkg) ? "ssqch" : "site" }]);
 	} else if (id === "hexo") {
-		listSyntax(plan, pages, [
-			["tag plugins (`{% codeblock %}`, `{% asset_img %}`, `{% post_link %}`)", /\{%\s*(?:codeblock|asset_img|asset_link|asset_path|post_link|post_path|blockquote|youtube|iframe|img|link|include_code|raw)\b/, "not in ssqch yet as written: filters or shortcodes of the site's own (Liquid's and Nunjucks' `{% %}` read them as tags)", "hexo-tag-plugins", "not-yet"],
+		// Hexo's pages are in `source/`: its scaffolds, the theme's own Markdown and a README aren't.
+		const sourcePages = pages.filter((e) => e.rel.startsWith("source/"));
+		if (sourcePages.length) plan.pages = sourcePages.length;
+		listSyntax(plan, sourcePages, [
+			// `{% raw %}` is the same in ssqch, and tags written in code (a page about them) don't run.
+			["tag plugins (`{% codeblock %}`, `{% asset_img %}`, `{% post_link %}`, `{% youtube %}`)", /\{%\s*(?:codeblock|asset_img|asset_link|asset_path|post_link|post_path|blockquote|youtube|iframe|img|link|include_code|note|pullquote|vimeo)\b/, "not in ssqch yet as written: filters, components or shortcodes of the site's own, with their arguments quoted (`ssqch docs --from hexo`, \"Tag plugins\")", "hexo-tag-plugins", "not-yet"],
 			["`<!-- more -->`", /<!--\s*more\s*-->/, "an excerpt's end, as in ssqch", "hexo-more", "ssqch"],
-		]);
-		if (isDir(path.join(dir, "themes"))) plan.byHand.push(["themes", "the theme's layouts (EJS, Nunjucks, Pug): ssqch runs EJS and Nunjucks; Pug isn't in ssqch", { code: "hexo-theme", status: "site" }]);
+		], true);
+		if (isDir(path.join(dir, "themes"))) {
+			// What the theme is written in, by its files: hexo.io's was Nunjucks alone, and scout said "EJS, Nunjucks, Pug".
+			const theme = entries.filter((e) => e.rel.startsWith("themes/"));
+			const kinds: Array<[string, RegExp]> = [["EJS", /\.ejs$/], ["Nunjucks", /\.(?:njk|swig)$/], ["Pug", /\.pug$/], ["Stylus", /\.styl$/]];
+			const found = kinds.map(([what, ext]) => [what, theme.filter((e) => ext.test(e.name)).length] as const).filter(([, n]) => n > 0);
+			const says = found.map(([what, n]) => `${n} ${what}`).join(", ");
+			plan.byHand.push(["themes", `the theme's files (${says || "none ssqch reads"}): its layouts become ssqch layouts. Hexo's \`body\`, \`partial()\` and \`page\` are ssqch's \`content\`, includes and the page's own data; Hexo's Nunjucks doesn't escape and ssqch's \`.njk\` does${found.some(([w]) => w === "Pug") ? "; Pug isn't in ssqch" : ""}${found.some(([w]) => w === "Stylus") ? "; Stylus runs as a `beforeBuild` command" : ""} (\`ssqch docs --from hexo\`)`, { code: "hexo-theme", status: "site", docs: "--from hexo" }]);
+			const languages = entries.filter((e) => /^themes\/[^/]+\/languages\//.test(e.rel));
+			if (languages.length) plan.byHand.push([languages[0].rel, `${languages.length} theme language files (Hexo's \`__()\`): a filter of the site's own that reads them as data (\`ssqch docs multilingual\`)`, { code: "hexo-i18n", status: "site", files: languages.length, docs: "multilingual" }]);
+		}
+		const scripts = entries.filter((e) => e.rel.startsWith("scripts/") && /\.[cm]?js$/.test(e.name));
+		if (scripts.length) {
+			const text = scripts.map((e) => readUtf8(e.abs) ?? "").join("\n");
+			const count = (kind: string) => (text.match(new RegExp(`hexo\\.extend\\.${kind}\\.register\\(`, "g")) ?? []).length;
+			const parts = [["helper", count("helper"), "filters"], ["tag", count("tag"), "components or filters"], ["filter", count("filter"), "transforms or hooks"], ["generator", count("generator"), "pages with pagination, or `afterBuild`"]].filter(([, n]) => (n as number) > 0).map(([what, n, as]) => `${n} ${what}${n === 1 ? "" : "s"} (${as})`);
+			plan.byHand.push([scripts[0].rel, `the site's own Hexo code in \`scripts/\` (${scripts.length} ${scripts.length === 1 ? "file" : "files"}${parts.length ? `: ${parts.join(", ")}` : ""}): each becomes ssqch's own`, { code: "hexo-scripts", status: "site", files: scripts.length, docs: "--from hexo" }]);
+		}
+		const hexoConfig = readUtf8(path.join(dir, "_config.yml")) ?? "";
+		if (/^post_asset_folder:\s*true/m.test(hexoConfig)) plan.byHand.push(["_config.yml", "`post_asset_folder: true`: each post's folder of files beside it, copied with `passthrough` (`ssqch docs --from hexo`)", { code: "hexo-asset-folders", status: "site", docs: "--from hexo" }]);
 		if (isDir(path.join(dir, "scaffolds"))) plan.byHand.push(["scaffolds", "scaffolds are ssqch's blueprints: `_blueprints/` and `ssqch new posts/pine.md`", { code: "hexo-scaffolds", status: "ssqch", docs: "blueprints" }]);
-		for (const pkg of packagesLike(dir, /^hexo-/)) plan.byHand.push(["package.json", `${pkg}: ${/generator-sitemap/.test(pkg) ? "`sitemapPlugin()`" : /generator-feed/.test(pkg) ? "`rssPlugin()`" : /renderer-(?:ejs|nunjucks|marked|markdown-it)/.test(pkg) ? "ssqch renders it itself" : /generator-(?:archive|category|tag|index)/.test(pkg) ? "a page per tag or category by pagination" : "not in ssqch yet: port it as a plugin"}`, { code: "hexo-plugin", status: /sitemap|feed|renderer-(?:ejs|nunjucks|marked|markdown-it)|generator-(?:archive|category|tag|index)/.test(pkg) ? "ssqch" : "site" }]);
+		const said = (pkg: string): [string, NonNullable<Todo["status"]>, string[] | undefined] => {
+			if (/generator-sitemap/.test(pkg)) return ["`sitemapPlugin()` from \"ssqch/sitemap\"", "ssqch", ["plugin:ssqch/sitemap"]];
+			if (/generator-feed/.test(pkg)) return ["`feedPlugin()` from \"ssqch/rss\"", "ssqch", ["plugin:ssqch/feed", "plugin:ssqch/rss"]];
+			if (/renderer-(?:ejs|nunjucks|marked|markdown-it)/.test(pkg)) return ["ssqch renders it itself", "ssqch", undefined];
+			if (/renderer-stylus/.test(pkg)) return ["Stylus runs as a `beforeBuild` command (`ssqch docs --from hexo`)", "site", undefined];
+			if (/generator-archive/.test(pkg)) return ["an archive by year: pagination over `collections.posts`", "ssqch", undefined];
+			if (/generator-(?:category|tag|index)/.test(pkg)) return ["a page per tag or category, by pagination", "ssqch", undefined];
+			if (/^hexo-server$/.test(pkg)) return ["`ssqch serve`", "ssqch", undefined];
+			if (/^hexo-(?:fs|util|log|i18n)$/.test(pkg)) return ["Hexo's own library: only the site's code uses it, and Node's `fs` (or the site's own code) does its part", "site", undefined];
+			if (/clean-css|html-minifier|minify/.test(pkg)) return ["`minifyPlugin()` from \"ssqch/minify\" (`css: true` for CSS)", "ssqch", ["plugin:ssqch/minify"]];
+			if (/uglify|terser/.test(pkg)) return ["JavaScript isn't minified by ssqch: terser in `afterBuild`", "site", undefined];
+			if (/filter-nofollow/.test(pkg)) return ["a transform that adds `rel` to outside links", "site", undefined];
+			if (/tag-embed/.test(pkg)) return ["its `{% youtube %}` and `{% vimeo %}` tags: see the tag plugins line", "site", undefined];
+			return ["not in ssqch yet: port it as a plugin", "site", undefined];
+		};
+		for (const pkg of packagesLike(dir, /^hexo-|^hexo$/).filter((p) => p !== "hexo")) {
+			const [say, status, defines] = said(pkg);
+			plan.byHand.push(["package.json", `${pkg}: ${say}`, { code: "hexo-plugin", status, ...(defines ? { defines } : {}) }]);
+		}
+	} else if (id === "gatsby") {
+		// The component-frameworks trailhead covers Gatsby: its React pages become templates, its
+		// GraphQL queries collections and data, `createPages` pagination.
+		const react = entries.filter((e) => /\.(?:jsx|tsx)$/.test(e.name) && !/\.(?:test|spec|stories)\.[jt]sx$/.test(e.name) && e.rel.startsWith("src/"));
+		if (react.length) plan.byHand.push([react[0].rel, `${react.length} React ${react.length === 1 ? "component" : "components"} and pages: layouts and includes in ssqch's templates, and the interactive ones islands (\`reactPlugin()\` from "ssqch/react", or custom elements)`, { code: "gatsby-react", status: "site", files: react.length, docs: "--from gatsby" }]);
+		const code = entries.filter((e) => /\.(?:[cm]?[jt]sx?)$/.test(e.name) && (e.rel.startsWith("src/") || /^gatsby-/.test(e.rel)));
+		const queries = countIn(code, /\bgraphql`|useStaticQuery\(/g);
+		if (queries.first) plan.byHand.push([queries.first, `GraphQL queries (${uses(queries.count, queries.files)}): the data they read is ssqch's collections (\`collections.posts\`), a page's front matter and data files`, { code: "gatsby-graphql", status: "site", count: queries.count, files: queries.files, docs: "collections" }]);
+		const node = ["gatsby-node.js", "gatsby-node.ts", "gatsby-node.mjs"].find((f) => isFile(path.join(dir, f)));
+		if (node && /createPages/.test(readUtf8(path.join(dir, node)) ?? "")) plan.byHand.push([node, "`createPages`: pages made from data become pagination (`pagination: { data: \"collections.posts\", size: 10 }`), and a page per tag pagination over `collections`", { code: "gatsby-create-pages", status: "ssqch", docs: "pagination" }]);
+		if (isDir(path.join(dir, "static"))) plan.byHand.push(["static", "`static/` is copied as it is: `passthrough: [{ static: \"/\" }]`", { code: "gatsby-static", status: "option", option: "passthrough: [{ static: \"/\" }]" }]);
+		listSyntax(plan, pages, [["`import` in MDX pages", /^import\s+.+\s+from\s+['"][^'"]+['"]/m, "`reactPlugin()` from \"ssqch/react\" reads them in a `.md` page; MDX's expressions need the site's `@mdx-js/mdx` as an engine (`ssqch docs --from gatsby`)", "gatsby-mdx-imports", "ssqch"]]);
+		const plugin = (pkg: string): [string, NonNullable<Todo["status"]>, string[] | undefined] => {
+			if (/plugin-sitemap/.test(pkg)) return ["`sitemapPlugin()` from \"ssqch/sitemap\"", "ssqch", ["plugin:ssqch/sitemap"]];
+			if (/plugin-feed/.test(pkg)) return ["`feedPlugin()` from \"ssqch/rss\"", "ssqch", ["plugin:ssqch/feed", "plugin:ssqch/rss"]];
+			if (/plugin-(?:sharp|image)|transformer-sharp|remark-images/.test(pkg)) return ["`imagePlugin()` from \"ssqch/image\"", "ssqch", ["plugin:ssqch/image"]];
+			if (/remark-prismjs/.test(pkg)) return ["`markdown: { highlight: { classes: \"prism\" } }`", "ssqch", undefined];
+			if (/remark-katex/.test(pkg)) return ["`markdown: { math: true }`", "ssqch", undefined];
+			if (/remark-autolink-headers/.test(pkg)) return ["heading ids are built in; the link inside each is a `heading` render hook", "ssqch", undefined];
+			if (/remark-smartypants/.test(pkg)) return ["`markdown: { smartPunctuation: true }`", "ssqch", undefined];
+			if (/^gatsby-link$|plugin-catch-links/.test(pkg)) return ["plain `<a>` links: ssqch's pages are whole pages", "ssqch", undefined];
+			if (/remark-copy-linked-files/.test(pkg)) return ["files a page links to are copied with `passthrough`, or kept beside it in a bundle", "site", undefined];
+			if (/remark-responsive-iframe/.test(pkg)) return ["a transform, or CSS (`aspect-ratio`) on the embeds", "site", undefined];
+			if (/transformer-remark|source-filesystem|plugin-mdx/.test(pkg)) return ["ssqch reads the site's Markdown itself", "ssqch", undefined];
+			if (/plugin-(?:react-helmet|manifest)/.test(pkg)) return ["what it writes in `<head>` (or the manifest file) goes in the layout, or a template", "site", undefined];
+			if (/plugin-(?:sass|postcss)/.test(pkg)) return [/sass/.test(pkg) ? "`sassPlugin()` from \"ssqch/sass\"" : "PostCSS as a `beforeBuild` command", /sass/.test(pkg) ? "ssqch" : "site", /sass/.test(pkg) ? ["plugin:ssqch/sass"] : undefined];
+			if (/plugin-offline/.test(pkg)) return ["a service worker of the site's own (Workbox's CLI in `afterBuild`)", "site", undefined];
+			if (/plugin-(?:google-gtag|google-analytics|gtag)/.test(pkg)) return ["a script in the layout, for production only", "site", undefined];
+			return ["not in ssqch yet: port it as a plugin", "site", undefined];
+		};
+		for (const pkg of packagesLike(dir, /^gatsby-/)) {
+			const [say, status, defines] = plugin(pkg);
+			plan.byHand.push(["package.json", `${pkg}: ${say}`, { code: "gatsby-plugin", status, ...(defines ? { defines } : {}) }]);
+		}
+	} else if (id === "next") {
+		const configFile = ["next.config.js", "next.config.mjs", "next.config.ts"].find((f) => isFile(path.join(dir, f)));
+		const config = configFile ? readUtf8(path.join(dir, configFile)) ?? "" : "";
+		if (configFile && !/output\s*:\s*["']export["']/.test(config)) plan.byHand.push([configFile, "no `output: \"export\"`: only pages Next.js can export as files move; server routes, middleware and on-demand rendering stay a server's", { code: "next-export", status: "site", docs: "--from next" }]);
+		const routes = entries.filter((e) => /^(?:src\/)?(?:app|pages)\//.test(e.rel) && /\.(?:jsx|tsx|js|ts|mdx)$/.test(e.name));
+		if (routes.length) plan.byHand.push([routes[0].rel, `${routes.length} route ${routes.length === 1 ? "file" : "files"} (\`app/\` or \`pages/\`): each page becomes a template with a \`permalink\`, its layouts ssqch layouts, its interactive parts islands (\`reactPlugin()\` from "ssqch/react")`, { code: "next-routes", status: "site", files: routes.length, docs: "--from next" }]);
+		const code = entries.filter((e) => /\.(?:[cm]?[jt]sx?)$/.test(e.name));
+		listSyntax(plan, code, [
+			["`getStaticProps` and `generateStaticParams`", /\b(?:getStaticProps|getStaticPaths|generateStaticParams)\b/, "a data file for the props, and pagination for the paths", "next-static-props", "site"],
+			["`next/image` and `next/link`", /from\s+["']next\/(?:image|link)["']/, "`<img>` (with `imagePlugin()`) and `<a>`", "next-image-link", "site"],
+		]);
+		if (isDir(path.join(dir, "public"))) plan.byHand.push(["public", "`public/` is copied as it is: `passthrough: [{ public: \"/\" }]`", { code: "next-public", status: "option", option: "passthrough: [{ public: \"/\" }]" }]);
 	}
 	plan.byHand.push([".", `scout reads ${name} sites lightly (no draft yet): \`ssqch docs --from ${id}\` has ${name}'s words${TRAILHEADS[id] ? " and its trailhead" : ""}`, { code: `${id}-trailhead`, status: "ssqch", docs: `--from ${id}` }]);
 	return plan;

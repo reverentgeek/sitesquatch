@@ -70,6 +70,10 @@ export interface Tpl {
 	fileDate: Date | undefined;
 	/** `page.lastModified`, with the `lastModified` setting. */
 	lastModified: Date | undefined;
+	/** The file's line its body starts on (1 with no front matter), for a warning about the body. */
+	bodyLine: number;
+	/** `page.updated`, with `lastModified: "git"`: its last commit when an earlier one added it, or its file's time when it has changes that aren't committed. */
+	updated: Date | undefined;
 	/** When its file last changed in a commit, with `dateFallback: "git"`, for a page with no date of its own. */
 	commitDate: Date | undefined;
 	/** Whether git had a date for its file (with either setting): what `ssqch trace` says `page.lastModified` came from. */
@@ -270,6 +274,20 @@ export class Site {
 	/** Why git gave no dates at all (`gitDates`), and the files it left out for changes not committed: for `ssqch trace`. */
 	private gitNote: string | undefined;
 	private gitChanged = new Set<string>();
+	/** The folders git gave no dates for, by their real paths, and why (not a repository, no commits). */
+	private gitLost = new Map<string, string>();
+	/** Each folder's real path, once a build: a page's real path is its folder's and its own name. */
+	private realDirs = new Map<string, string>();
+
+	/** A page's file by its real path, as git names it: through its folder's, resolved once for all the files in it. */
+	private realFile(file: string): string {
+		const dir = path.dirname(file);
+		let real = this.realDirs.get(dir);
+		if (real === undefined) { real = realPath(dir); this.realDirs.set(dir, real); }
+		return path.join(real, path.basename(file));
+	}
+	/** The files git has more than one commit for: their last commit changed them after they were added, which `page.updated` takes as an update. */
+	private gitRevised = new Set<string>();
 	private caseBlind: boolean | undefined;
 
 	/**
@@ -405,7 +423,8 @@ export class Site {
 			}
 		}
 		for (const format of config.templateFormats) {
-			try { this.engines.get(format); } catch (e) { throw context(e, "check `template_formats`"); }
+			// The option as the site's config spells it: TOML's name in a `.toml`, the JavaScript one otherwise.
+			try { this.engines.get(format); } catch (e) { throw context(e, config.file?.endsWith(".toml") ? "check `template_formats`" : "check `templateFormats`"); }
 		}
 		// Markdown's render hooks and containers: a theme's, then the site's own on top of them.
 		const hooks = new Map<string, HookTemplate>();
@@ -434,6 +453,10 @@ export class Site {
 				warn(warning("data", `skipped _data/${file} (no loader for that format; provide \`${stem}\` in the config's \`data\`)`, { file: this.display(path.join(dirs.data, file)) }));
 			}
 		}
+		// `page` is ssqch's (url, inputPath, date and headings), set on every page after the cascade,
+		// so a global `page` never reaches one: said, as a computed `page` is refused (hexo.io's move
+		// gave Hexo's theme a `page` this way, and nothing said it didn't take).
+		if (Object.hasOwn(global, "page") && !config.quiet) warn(warning("data", "global data `page` isn't used, because `page` is ssqch's: its url, inputPath, date and headings. Give the value another name (`data: { meta: ... }`, or `_data/meta.json`)"));
 		global.ssqch = { version: VERSION, generator: `SiteSquatch v${VERSION}`, env: config.env, serving: config.serving, base: config.base };
 		this.global = global;
 		timer.lap("data");
@@ -663,54 +686,94 @@ export class Site {
 	}
 
 	/**
-	 * When each file in the git repository last changed in a commit, from one `git log`. Files
-	 * with uncommitted changes are left out (they use their modification time). No git: nothing,
-	 * with a warning. Not a repository: nothing, quietly, since a site made with `ssqch init`
-	 * builds before anyone runs `git init`, and a warning on every build there names nothing to
-	 * fix; its pages use their files' times until the first commit.
+	 * When each page's file last changed in a commit, from one `git log` per repository the pages
+	 * come from: the project's, and any other a page reaches (a content folder beside the project,
+	 * `../docs`, or a linked one). Files with uncommitted changes are left out (they use their
+	 * modification time). No git: nothing, with a warning. Not a repository: nothing, with the
+	 * build's note (`gitDatesNote` in build.ts), since a site made with `ssqch init` builds before
+	 * anyone runs `git init`; its pages use their files' times until the first commit.
 	 */
 	private gitDates(setting: string): Map<string, Date> {
 		const { config, dirs } = this;
 		this.gitNote = undefined;
+		this.gitLost.clear();
 		this.gitChanged.clear();
-		const git = (...args: string[]) => spawnSync("git", ["-C", dirs.root, "-c", "core.quotepath=off", ...args], { encoding: "utf8", maxBuffer: 1 << 30 });
+		this.gitRevised.clear();
+		this.realDirs.clear();
+		const git = (cwd: string, ...args: string[]) => spawnSync("git", ["-C", cwd, "-c", "core.quotepath=off", ...args], { encoding: "utf8", maxBuffer: 1 << 30 });
 		const dates = new Map<string, Date>();
+		const revised = new Set<string>();
 		const lost = (message: string) => { if (!config.quiet) warn(warning("last-modified", `${setting}: ${message}`)); };
-		const top = git("rev-parse", "--show-toplevel");
-		if (top.error) { lost(`can't run git (${top.error.message}), so pages use their files' times`); this.gitNote = "git couldn't run"; return dates; }
-		if (top.status !== 0) { this.gitNote = "the project isn't in a git repository"; return dates; }
-		const toplevel = realPath(top.stdout.trim());
-		if (git("rev-parse", "--is-shallow-repository").stdout?.trim() === "true") {
-			lost("this is a shallow clone, so dates come from the commits it has (fetch the full history, like `fetch-depth: 0` in GitHub Actions)");
+		// Where the pages are, as real paths: the project, and the folders of pages outside it (the
+		// redux.js.org move's docs were `../docs`, read through links, and got no dates at all).
+		const root = realPath(dirs.root);
+		const outside = [...new Set(this.files.map((file) => path.dirname(this.realFile(file))).filter((dir) => !isInside(root, dir)))].sort(compareText);
+		const areas = [root];
+		for (const dir of outside) if (!areas.some((area) => isInside(area, dir))) areas.push(dir);
+		// Each area's repository: one `rev-parse` for an area no repository found so far holds.
+		const repos = new Map<string, string[]>();
+		for (const area of areas) {
+			const known = [...repos.keys()].find((top) => isInside(top, area));
+			if (known !== undefined) { repos.get(known)!.push(area); continue; }
+			const top = git(area, "rev-parse", "--show-toplevel");
+			if (top.error) { lost(`can't run git (${top.error.message}), so pages use their files' times`); this.gitNote = "git couldn't run"; return dates; }
+			if (top.status !== 0) { this.gitLost.set(area, area === root ? "the project isn't in a git repository" : "its folder isn't in a git repository"); continue; }
+			const toplevel = realPath(top.stdout.trim());
+			repos.set(toplevel, [...(repos.get(toplevel) ?? []), area]);
 		}
-		const log = git("log", "--format=@%ct", "--name-only", "--no-merges", "--", ".");
-		if (log.error || log.status !== 0) { this.gitNote = "git log failed"; return dates; }
-		let current: Date | undefined;
-		for (const line of log.stdout.split("\n")) {
-			if (line.startsWith("@")) {
-				const seconds = Number.parseInt(line.slice(1).trim(), 10);
-				current = Number.isFinite(seconds) ? new Date(seconds * 1000) : undefined;
-			} else if (line.trim() !== "" && current) {
-				const file = path.join(toplevel, line.trim());
-				if (!dates.has(file)) dates.set(file, current);
+		for (const [toplevel, inRepo] of repos) {
+			const project = inRepo.includes(root);
+			if (git(toplevel, "rev-parse", "--is-shallow-repository").stdout?.trim() === "true") {
+				lost(`${project ? "this" : `${displayPath(dirs.root, toplevel)}`} is a shallow clone, so dates come from the commits it has (fetch the full history, like \`fetch-depth: 0\` in GitHub Actions)`);
+			}
+			// A repository with no commits yet (`git init` and nothing more) has no HEAD, and `git log` fails there.
+			const why = git(toplevel, "rev-parse", "--verify", "-q", "HEAD").status !== 0 ? "the repository has no commits yet" : undefined;
+			const specs = inRepo.map((area) => relative(toplevel, area) || ".");
+			const log = why ? undefined : git(toplevel, "log", "--format=@%ct", "--name-only", "--no-merges", "--", ...specs);
+			if (why || !log || log.error || log.status !== 0) {
+				for (const area of inRepo) this.gitLost.set(area, why ?? "git log failed");
+				continue;
+			}
+			let current: Date | undefined;
+			for (const line of log.stdout.split("\n")) {
+				if (line.startsWith("@")) {
+					const seconds = Number.parseInt(line.slice(1).trim(), 10);
+					current = Number.isFinite(seconds) ? new Date(seconds * 1000) : undefined;
+				} else if (line.trim() !== "" && current) {
+					const file = path.join(toplevel, line.trim());
+					// Newest first: a file seen again had a commit before its last one, so the last was an update.
+					if (!dates.has(file)) dates.set(file, current);
+					else revised.add(file);
+				}
+			}
+			const status = git(toplevel, "status", "--porcelain", "--", ...specs);
+			if (!status.error && status.status === 0) {
+				for (const line of status.stdout.split("\n")) {
+					if (line.length <= 3) continue;
+					const changed = path.join(toplevel, line.slice(3).split(" -> ").pop()!);
+					if (dates.delete(changed)) this.gitChanged.add(realPath(changed));
+				}
 			}
 		}
-		const status = git("status", "--porcelain", "--", ".");
-		if (!status.error && status.status === 0) {
-			for (const line of status.stdout.split("\n")) {
-				if (line.length <= 3) continue;
-				const changed = line.slice(3).split(" -> ").pop()!;
-				if (dates.delete(path.join(toplevel, changed))) this.gitChanged.add(realPath(path.join(toplevel, changed)));
-			}
-		}
-		// Templates are found through the input folder's real path.
+		// The project's own reason, when every area had it: what the build's note says.
+		const reasons = new Set(this.gitLost.values());
+		if (this.gitLost.size === areas.length && reasons.size === 1) this.gitNote = [...reasons][0] === "its folder isn't in a git repository" ? "the project isn't in a git repository" : [...reasons][0];
+		// Pages are looked up by their real paths (`commitDate`), so a linked folder's pages find theirs.
+		for (const file of revised) if (dates.has(file)) this.gitRevised.add(realPath(file));
 		return new Map([...dates].map(([file, date]) => [realPath(file), date]));
 	}
 
-	/** Why git gave a page's file no date, for `ssqch trace`: the whole project's reason, or the file's own. */
+	/** Why git gave no file a date, when it was the whole project's reason (not a repository, no commits), for the build's note. */
+	get gitProjectNote(): string | undefined {
+		return this.gitNote === "the project isn't in a git repository" || this.gitNote === "the repository has no commits yet" ? this.gitNote : undefined;
+	}
+
+	/** Why git gave a page's file no date, for `ssqch trace`: the whole project's reason, its folder's, or the file's own. */
 	gitWhy(file: string): string {
 		if (this.gitNote !== undefined) return this.gitNote;
-		return this.gitChanged.has(file) ? "it has changes that aren't committed" : "it isn't in a commit yet";
+		const real = realPath(file);
+		for (const [area, why] of this.gitLost) if (isInside(area, real)) return why;
+		return this.gitChanged.has(real) ? "it has changes that aren't committed" : "it isn't in a commit yet";
 	}
 
 	// ---- the cascade ---------------------------------------------------------------------------
@@ -793,7 +856,7 @@ export class Site {
 	}
 
 	private async loadTemplate(file: string, source: Buffer, dirData: Map<string, Data>, commitDates: Map<string, Date>): Promise<Tpl> {
-		const commit = commitDates.get(file)?.getTime();
+		const commit = commitDates.size > 0 ? commitDates.get(this.realFile(file))?.getTime() : undefined;
 		const kept = this.shared !== undefined ? keptTemplates.get(file) : undefined;
 		// The same bytes, as `keptSources` kept them or read again with nothing different (a file in
 		// a folder Windows named): nothing in it changed, unless its date is its file's time and that moved.
@@ -930,6 +993,15 @@ export class Site {
 			// `page` is ssqch's (url, inputPath, date, headings), set after computed: a computed `page`
 			// would be thrown away, so it's refused (opensource.guide set one to give templates
 			// Jekyll's `page.title`, and nothing said it didn't take).
+			// `render` chooses the engines here too, before `computed` runs: a computed one that's plain
+			// text is used as written, as `layout` is, and one that depends on the page is refused
+			// (redux.js.org's move gave one to its MDX pages, and they rendered with the default engines
+			// without a word).
+			const computedRender = own.computed?.render;
+			if (isPlainObject(own.computed) && Object.hasOwn(own.computed, "render")) {
+				if (typeof computedRender === "string" && !dependsOnPage(computedRender)) own.render = computedRender;
+				else bail(`\`render\` in computed can't depend on the page: the engines are chosen before computed runs. Set it in front matter or a folder's data file (\`"render": "md"\`), or as plain text in computed (\`computed: { render: "md" }\`)`);
+			}
 			if (isPlainObject(own.computed) && Object.hasOwn(own.computed, "page")) bail("`page` in computed isn't applied, because `page` is ssqch's: its url, inputPath, date and headings. Give the value another name (`computed: { meta: ... }`); front matter is at the top level already (`title`, not `page.title`)");
 			// Layout chain; layout front matter sits below template data. `layout: ""`, like `false`
 			// and `null`, means no layout.
@@ -947,6 +1019,11 @@ export class Site {
 				if (this.keepLayers && Object.keys(layout.data).length) layers.splice(layoutLayers++, 0, [`layout ${layout.name}`, layout.data]);
 			}
 			data = merge(data, own, config.deepMerge);
+			// A layout's own `layout` says what wraps it, and isn't the page's: a page whose layout
+			// comes from global data keeps that name, where the inner layout's `layout` took its place.
+			// hexo.io's move returned `d.layout` from a computed `layout` and lost its page layout,
+			// and `trace` named the config's data for the outer layout's name.
+			if (!Object.hasOwn(own, "layout") && Object.hasOwn(this.global, "layout") && chain.length > 1) data.layout = this.global.layout;
 			normalizeTags(data);
 
 			let ext = templateExtension(file);
@@ -959,6 +1036,8 @@ export class Site {
 			const fileDate = /^\d{4}-\d{2}-\d{2}/.test(stem) ? toDate(stem.slice(0, 10)) : undefined;
 			const stat = fs.statSync(file, { bigint: true });
 			const mtime = new Date(Number(stat.mtimeMs));
+			// Git's dates are by real path: a page in a linked folder is its target's file.
+			const real = commitDates.size > 0 || this.gitChanged.size > 0 ? this.realFile(file) : file;
 			return {
 				layers,
 				frontKeys,
@@ -966,6 +1045,7 @@ export class Site {
 				input: file,
 				rel,
 				body,
+				bodyLine: src.length - body.length > 0 ? src.slice(0, src.length - body.length).split("\n").length : 1,
 				data,
 				engines,
 				layouts: chain,
@@ -975,9 +1055,12 @@ export class Site {
 				fileDate,
 				// A file's time is when this checkout (or an editor) wrote it, so `SOURCE_DATE_EPOCH`
 				// pins it, as it does an undated page's date: the same build gives the same pages.
-				lastModified: config.lastModified === "git" ? commitDates.get(file) ?? fileTime(mtime) : config.lastModified === "file" ? fileTime(mtime) : undefined,
-				commitDate: config.dateFallback === "git" ? commitDates.get(file) : undefined,
-				committed: commitDates.has(file),
+				lastModified: config.lastModified === "git" ? commitDates.get(real) ?? fileTime(mtime) : config.lastModified === "file" ? fileTime(mtime) : undefined,
+				// A file's first commit adds it, so it's no update: the first commit after `ssqch init`
+				// dates every post that day. Its changes that aren't committed are an edit, as you make it.
+				updated: config.lastModified !== "git" ? undefined : this.gitChanged.has(real) ? fileTime(mtime) : this.gitRevised.has(real) ? commitDates.get(real) : undefined,
+				commitDate: config.dateFallback === "git" ? commitDates.get(real) : undefined,
+				committed: commitDates.has(real),
 			};
 		} catch (e) {
 			throw context(e, `in ${rel}`);
@@ -1041,9 +1124,10 @@ export class Site {
 		const basePage = (url: unknown, outputPath: unknown, when: Date): Data => {
 			const page: Data = { url, outputPath, inputPath, fileSlug: tpl.fileSlug, filePathStem: tpl.filePathStem, date: when };
 			if (tpl.lastModified) page.lastModified = tpl.lastModified;
+			if (tpl.updated) page.updated = tpl.updated;
 			// While serving, a read of the dates is noted (`noteDate`): the page's key is its file and URL, as `pageKey` in build.ts makes it.
 			// Only a page whose date or lastModified is its file's time can have that as its only change.
-			if (incremental(this.config) && this.usesFileTime(tpl)) this.watchDates(page, `${tpl.input}\0${url === false ? null : url}`, ["date", "lastModified"]);
+			if (incremental(this.config) && this.usesFileTime(tpl)) this.watchDates(page, `${tpl.input}\0${url === false ? null : url}`, ["date", "lastModified", "updated"]);
 			return page;
 		};
 

@@ -7,6 +7,7 @@ import { BUILTINS } from "../config.ts";
 import type { Config } from "../config.ts";
 import { shownAsUtc, toDate } from "../data.ts";
 import { aliasUsed, bail } from "../diagnostics.ts";
+import { mathmlOnly } from "../engines/math.ts";
 import * as equivalents from "../equivalents.ts";
 import { rewriteHtml } from "../html.ts";
 import * as image from "./image.ts";
@@ -99,11 +100,11 @@ export function htmlToAbsoluteUrls(html: unknown, base: unknown, siteBase = site
 	});
 }
 
-/** A post's HTML for a feed: one generated copy for each local image, and every URL absolute. */
+/** A post's HTML for a feed: one generated copy for each local image, every URL absolute, and formulas KaTeX rendered as their MathML alone. */
 export function feedHtml(html?: unknown, base?: unknown, options?: unknown, siteBase = site.base): string | Promise<string> {
 	const feedImages = (image as { feedImages?: (html: string, base: string, options: unknown) => string | Promise<string> }).feedImages;
 	if (typeof feedImages !== "function") bail("feedHtml() isn't in the Node build of ssqch yet (the move to Node, stage 5)");
-	const source = html === undefined || html === null ? "" : String(html);
+	const source = mathmlOnly(html === undefined || html === null ? "" : String(html));
 	const done = feedImages(source, String(base), options);
 	return typeof done === "string" ? htmlToAbsoluteUrls(done, base, siteBase) : done.then((h) => htmlToAbsoluteUrls(h, base, siteBase));
 }

@@ -49,3 +49,22 @@ test("bindings_read_the_pages_data_and_vues_literals", () => {
 	assert.deepEqual(seen[0].props, { count: 2, "data-size": "lg", dataSize: "lg", disabled: true });
 	assert.equal(seen[0].attrs, " data-size=\"lg\" disabled");
 });
+
+// hexo.io's API pages had `title="value <string> | <Function>"`: an attribute's text isn't a tag.
+test("a_tag_written_in_an_attribute_is_text", () => {
+	const unknown: string[] = [];
+	const html = `<a href="#x" title="value <string> | <Function>">value</a> <Badge text="Pine" />`;
+	assert.equal(renderComponents(html, render, {}, (name) => unknown.push(name)), `<a href="#x" title="value <string> | <Function>">value</a> <span class="badge">Pine</span>`);
+	assert.deepEqual(unknown, []);
+});
+
+// JSX's values, as MDX and React pages write them (a layout's or an HTML page's tag, which no
+// Markdown step rewrites): before, `height={500}` was the text "{500}", and a space split it.
+test("jsx_values_are_bindings", () => {
+	const data = { title: "Cedar Trail" };
+	seen.length = 0;
+	renderComponents("<Badge height={500} open={true} style={{ color: \"red\" }} text={title} label=\"{cones}\" />", render, data);
+	assert.deepEqual(seen[0].props, { height: 500, open: true, style: { color: "red" }, text: "Cedar Trail", label: "{cones}" });
+	assert.deepEqual(seen[0].bindings, { height: "500", open: "true", style: "{ color: \"red\" }", text: "title" });
+	assert.equal(seen[0].attrs, " label=\"{cones}\"");
+});

@@ -95,6 +95,15 @@ test("dates written loosely are read as 0.7 read them", () => {
 	assert.equal(parseDate("+2024-06-01")?.toISOString(), "2024-06-01T00:00:00.000Z");
 });
 
+// hexo.io's posts wrote `2026/05/08 12:00` (Hexo reads it with moment), which was refused.
+test("dates with slashes are read as the same dates with dashes", () => {
+	const iso = (s: string) => parseDate(s)?.toISOString();
+	assert.equal(iso("2026/05/08"), iso("2026-05-08"));
+	assert.equal(iso("2026/5/8 12:00"), "2026-05-08T12:00:00.000Z");
+	assert.equal(iso("2026/05/08 12:00:30 +02:00"), "2026-05-08T10:00:30.000Z");
+	for (const not of ["05/08/2026", "2026/13/01", "26/05/08"]) assert.equal(parseDate(not), undefined, not);
+});
+
 test("a JSON error says where, whatever V8 says", () => {
 	assert.throws(() => parseFrontMatter("---json\n{\"a\": }\n---\n"), /invalid JSON front matter: .* at line 1 column 7$/);
 	assert.throws(() => parseFrontMatter("---json\n{\n  \"a\": 1,\n}\n---\n"), /invalid JSON front matter: .* at line 3 column 1$/);

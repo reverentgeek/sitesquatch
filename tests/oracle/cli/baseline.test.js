@@ -6,7 +6,7 @@ import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
-import { ssqch, tempDir, write, read, exists } from "../lib/ssqch.js";
+import { BIN, ssqch, tempDir, write, read, exists } from "../lib/ssqch.js";
 
 const hasGit = spawnSync("git", ["--version"]).status === 0;
 const git = (dir, ...args) => {
@@ -92,6 +92,20 @@ test("baseline_builds_the_old_site_and_says_what_varies", { skip: !hasGit && "ne
 	assert.ok(r.code === 2 && r.log.includes("--commit nope: no such commit"), r.log);
 	r = ssqch(["baseline", "node -e 0", "--to", "../out", "--quiet"], { cwd: dir });
 	assert.ok(r.code === 2 && r.log.includes("--to ../out: a name inside the site's folder"), r.log);
+});
+
+// DELIBERATE (0.16.2, the new docs site's rerun): a site that builds with ssqch already gets
+// advice for itself, not a move's "build with ssqch into an empty folder".
+test("baseline_of_a_site_that_builds_with_ssqch_says_how_to_compare_a_change", { skip: !hasGit && "needs git" }, () => {
+	const dir = tempDir("baseline-ssqch");
+	write(dir, { "src/index.md": "# Pine\n", "ssqch.config.js": "export default { dirs: { input: \"src\", output: \"dist\" } };\n", ".gitignore": "dist\n.cache\n" });
+	git(dir, "init", "-q");
+	git(dir, "add", "-A");
+	git(dir, "commit", "-q", "-m", "The site");
+	const command = /\.[cm]?[jt]s$/.test(BIN) ? `"${process.execPath}" "${BIN}" build -q` : `"${BIN}" build -q`;
+	const r = ssqch(["baseline", command, "--from", "dist", "--runs", "2"], { cwd: dir });
+	assert.equal(r.code, 0, r.log);
+	assert.ok(r.log.includes("\nNext: to see what a change does, make it, build, and `ssqch diff .cache/ssqch/baseline/ref-1 dist`.\n") && !r.log.includes("build with ssqch into an empty folder"), r.log);
 });
 
 // Jekyll prints site.time and doesn't read SOURCE_DATE_EPOCH (the fresh opensource.guide move:

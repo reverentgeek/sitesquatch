@@ -50,6 +50,24 @@ test("a piece of HTML a script fetches isn't a page, and a minified page still i
 	assert.ok(p.findings.some((f) => f.code === "no-h1" && f.files.includes("bare/index.html")), JSON.stringify(p.findings));
 });
 
+// The starters' `url` is example.com until it's changed: a site built with it was all clear (the
+// new docs site's rerun). `.example`, for tests, isn't a placeholder.
+test("a site still on example.com is told so, and .example isn't", () => {
+	const dir = built({
+		"robots.txt": "User-agent: *\nAllow: /\n\nSitemap: https://example.com/sitemap.xml\n",
+		"sitemap.xml": "<urlset><url><loc>https://example.com/</loc></url></urlset>",
+		"llms.txt": "# Trail\n\n- [Home](https://example.com/index.md)\n",
+		"index.html": page("Home", `<p>${TEXT}</p>`, "<link rel=\"canonical\" href=\"https://example.com/\">"),
+		"other/index.html": page("Other", `<p>${TEXT}</p>`, "<link rel=\"canonical\" href=\"https://www.example.org/other/\">"),
+		"404.html": page("Not found", "<p>Lost.</p>"),
+	});
+	const found = patrol(dir).findings.find((f) => f.code === "placeholder-url");
+	assert.deepEqual(found?.files, ["sitemap.xml", "robots.txt", "llms.txt", "index.html", "other/index.html"]);
+	assert.ok(found?.message.startsWith("the site's address is https://example.com, a placeholder"), found?.message);
+	const real = built({ "index.html": page("Home", `<p>${TEXT}</p>`, "<link rel=\"canonical\" href=\"https://trail.example/\">"), "sitemap.xml": "<urlset><url><loc>https://notexample.com/</loc></url></urlset>" });
+	assert.ok(!patrol(real).findings.some((f) => f.code === "placeholder-url"));
+});
+
 test("each kind of trouble has its code", () => {
 	const dir = built({
 		"llms.txt": "Trail\n\n- [Guide](guide/)\n- [Gone](/gone.md)\n- [Page](/guide/)\n",

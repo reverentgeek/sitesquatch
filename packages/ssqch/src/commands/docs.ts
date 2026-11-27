@@ -666,13 +666,39 @@ function trailheadSection(query: string): { page: string; generator: string; hea
 	return undefined;
 }
 
+/**
+ * The rows and paragraphs of the trailheads that have `query` as a word, when the main docs
+ * don't: `stylus` was only in the Hexo trailhead, and `ssqch docs stylus` found nothing (hexo.io's
+ * move). Up to five, by trailhead.
+ */
+function trailheadMentions(query: string): { page: string; generator: string; text: string } | undefined {
+	const word = query.trim();
+	if (word.length < 3 || /\s/.test(word)) return undefined;
+	const pattern = new RegExp(`(?<![\\p{L}\\p{N}_-])${word.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?![\\p{L}\\p{N}_-])`, "iu");
+	for (const file of bundledNames("docs/trailheads").sort()) {
+		const { title, body } = docsPage(bundled(`docs/trailheads/${file}`));
+		const hits: string[] = [];
+		let fence = false;
+		for (const line of body.split("\n")) {
+			if (/^(```|~~~)/.test(line)) { fence = !fence; continue; }
+			if (fence || line.trim() === "" || /^#{1,6}\s/.test(line) || /^\|\s*-/.test(line)) continue;
+			if (pattern.test(line)) hits.push(line);
+			if (hits.length === 5) break;
+		}
+		if (hits.length) return { page: title, generator: file.replace(/^from-/, "").replace(/\.md$/, ""), text: `${hits.join("\n")}\n` };
+	}
+	return undefined;
+}
+
 /** A trailhead's page on sitesquatch.dev: `from-eleventy.md` is `/docs/trailheads/from-eleventy/`. */
 const guideUrl = (file: string) => `${SITE_URL}/docs/trailheads/${file.replace(/\.md$/, "")}/`;
 
 /** `ssqch docs --from <generator>`: its words, ssqch's names for them, and its trailhead. */
 function from(generator: string, json: boolean): string {
 	const known = generators();
-	const found = known.find((g) => g.toLowerCase() === generator.toLowerCase() || g.replace(/\./g, "").toLowerCase() === generator.toLowerCase());
+	// `next` and `nextjs` are Next.js, as `ssqch scout --from next` takes it.
+	const asked = generator.toLowerCase() === "next" ? "next.js" : generator.toLowerCase();
+	const found = known.find((g) => g.toLowerCase() === asked || g.replace(/\./g, "").toLowerCase() === asked.replace(/\./g, ""));
 	if (found === undefined) {
 		const near = closest(generator.toLowerCase(), known.map((g) => g.toLowerCase()));
 		throw new Error(`--from ${generator}: no trailhead for that generator${near ? ` (did you mean \`${near}\`?)` : ""}. There are: ${known.map((g) => g.toLowerCase()).join(", ")}`);
@@ -771,6 +797,8 @@ export function runDocs(grammar: Grammar, command: DocsCommand): number {
 	const a = page?.title !== undefined ? { query, names: [], passages: [], also: [], section: all.findIndex((s) => s.level <= 2 && s.title === page.title) } : exact ? undefined : answer(grammar, all, known, query);
 	if (a && a.section !== -1) return out(json ? JSON.stringify(answerJson(all, a), null, 2) + "\n" : answerText(all, a));
 	if (trail) return out(json ? JSON.stringify({ query, found: true, trailhead: trail }, null, 2) + "\n" : `From "${trail.page}" (ssqch docs --from ${trail.generator}):\n\n${trail.text}`);
+	const mention = a === undefined || a.section === -1 ? trailheadMentions(query) : undefined;
+	if (mention) return out(json ? JSON.stringify({ query, found: true, trailhead: { page: mention.page, generator: mention.generator, heading: null, text: mention.text } }, null, 2) + "\n" : `From "${mention.page}" (ssqch docs --from ${mention.generator}), where it's mentioned:\n\n${mention.text}`);
 	const near = closestName(all, known, query);
 	const next = near === undefined ? nextStep(grammar, all, known, query) : undefined;
 	// Names with a word of the query in them (`images` -> imagePlugin, image()), when nothing is

@@ -9,6 +9,90 @@ The version is `version` in `packages/ssqch/package.json` (up to 0.7, `[workspac
 version` in `Cargo.toml`, shared by every crate). A release is a `v<version>` tag on a commit
 where that version matches.
 
+## 0.16.2 - 2026-11-27
+
+### Added
+
+- `reactPlugin()` from `ssqch/react` keeps a site's React components: a Markdown page imports
+  them as MDX does (`import Counter from "./Counter.jsx"`, then `<Counter start={3} />`), or
+  `components` names them for every page, and they render with the site's own React, react-dom
+  and esbuild at build time. JSX props read as values, children that are components arrive as
+  React elements (a `<Tabs>` reads its `<TabItem>`s), and `hydrate` (for all, or by name) runs
+  them in the browser as islands, with one script on only the pages that have one. A component
+  that throws, a misspelled tag or a missing import stops the build at the page's line.
+- A component's JSX value (`height={500}`, `style={{ color: "red" }}`) is read as a value in any
+  page or layout, as Vue's `:height="500"` is; it was the text `"{500}"`.
+- Math in Markdown: with `markdown: { math: true }`, TeX between `$` and `$$` reaches the page
+  as you wrote it, ready for KaTeX's auto-render or MathJax, where Markdown used to eat its
+  backslashes, braces and asterisks. Prices stay prices (`$5 and $10`, `$20-$30`), and `\$` is a
+  dollar sign. `math: { render: "katex" }` renders every formula while the site builds, with the
+  site's own `katex` package, so pages need only KaTeX's stylesheet, and a formula KaTeX can't
+  read stops the build at its page and line. A formula with template code in it (`\frac{{a}}{b}`,
+  which Jinja reads first) is a warning at its line. `ssqch docs math` has the details.
+- `ssqch patrol` warns when the site's address is still a placeholder (`placeholder-url`): a build
+  whose canonical links, sitemap, robots.txt or llms.txt point at example.com, .net or .org, which
+  the starters' `url` is until it's changed. A site built from a starter checked all clear.
+
+- `page.updated`, with `lastModified: "git"`: a page's last commit when an earlier commit added
+  its file, or its file's time while it has changes that aren't committed, and unset otherwise.
+  The blog starter's posts say "(updated ...)" with it, so a new blog no longer marks every post
+  updated today: outside a repository, and again after the first commit.
+- A note when `lastModified: "git"` (or `dateFallback: "git"`) has no commits to read, once a build
+  and once while serving: `the project isn't in a git repository, so 15 pages use their files'
+  times for page.lastModified, and none has page.updated`, and what dates them. It was quiet.
+
+### Changed
+
+- `ssqch init` ends with the command that starts the dev server as the project has ssqch: `npm run
+  serve` (or the package manager's own, from its lockfile) when ssqch is installed in the project,
+  where it said `ssqch serve`, which isn't on the PATH for a local install.
+- `ssqch baseline` of a site that builds with ssqch (`ssqch build`, or a package script that runs
+  it) ends with how to see what a change does, `ssqch diff <reference> <output>`, instead of a
+  move's advice.
+- `ssqch build --format json` gives a content error's or warning's `line` when it names a field
+  the front matter sets (a `date` that isn't a date, a schema's problem, Jekyll's `published`),
+  the line the text output's code frame points at.
+- `ssqch scout` reads Gatsby and Next.js sites (lightly, as Astro's): their React pages and
+  routes, GraphQL queries, `createPages`, `static/` or `public/`, and each plugin with ssqch's
+  way. `ssqch build` in a Gatsby folder sent people to scout, which refused it. `ssqch docs --from
+  next` answers too. Scout's Hexo report says what the theme is written in (it said "EJS,
+  Nunjucks, Pug" for any), lists the site's `scripts/`, the theme's language files and
+  `post_asset_folder`, names `feedPlugin()` for the feed and `ssqch serve` for hexo-server, marks
+  the feed, sitemap and minifier done once the config has their plugins, and doesn't count a tag
+  written in a code block.
+- A date can be written with slashes (`2026/05/08`, `2026/05/08 12:00`), as Hexo writes them, and
+  is read as the same date with dashes. The docs list the forms a date can take.
+- A computed `render` written as plain text (`computed: { render: "md" }`) chooses the page's
+  engines, as a computed `layout` does.
+
+### Fixed
+
+- `minifyPlugin({ css: true })` and `minifyCss()` no longer start CSS that has a character outside
+  ASCII with a byte-order mark, which landed inside `<style>` on every page.
+- `lastModified: "git"` and `dateFallback: "git"` date pages outside the project's folder by
+  their commits too: a content folder beside it (`../docs`), one linked into the input, and one
+  in another repository. They had their files' times, and `ssqch trace` said they weren't in a
+  commit.
+- `ssqch serve` watches an includes, layouts or data folder outside the input folder, and what a
+  linked folder in the input leads to: an edit there rebuilt nothing.
+- A computed `render` that depends on the page is an error that says where to set it, where it
+  was ignored (the engines are chosen before computed runs).
+- A page whose layout comes from global data keeps that name as its `layout`: it was the inner
+  layout's own `layout`, so a computed `layout` that returned it unchanged lost the page's
+  layout, and `ssqch trace` named the wrong place for it.
+- Global data named `page` is a warning: ssqch's own `page` replaces it on every page.
+- `imagePlugin()` and `feedHtml()` find an image in a folder `passthrough` publishes (a site's
+  `static/`), where they said it wasn't found, and a missing image's warning says each place it
+  looked.
+- A `<Function>` written inside an attribute (`title="value <Function>"`) isn't taken for a
+  component, and a template the site's own engine renders isn't told its `site.posts` is
+  Jekyll's.
+- `ssqch scout`: `--from` for a build Netlify publishes from `/public`, the config's own file
+  name ("with ssqch.config.mjs"), a config that calls `readData()` when scouting it from another
+  folder, and `--reference` from where scout runs when it isn't in the scouted folder.
+- The error for an unknown template format names `templateFormats` in a JavaScript config, where
+  it said TOML's `template_formats`. `ssqch capabilities` lists every generator scout reads.
+
 ## 0.16.1 - 2026-11-26
 
 ### Changed

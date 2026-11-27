@@ -11,7 +11,7 @@ import { Locator } from "../diagnostics.ts";
 import * as equivalents from "../equivalents.ts";
 import { describeThrown, loadedFiles } from "../modules.ts";
 import { filesRead, siteRead } from "../plugin-files.ts";
-import { isInside, listOutput, realPath, relative, slashes } from "../paths.ts";
+import { isDir, isInside, listOutput, realPath, relative, slashes } from "../paths.ts";
 import type { Listed } from "../paths.ts";
 import { summary } from "../report.ts";
 import { isAsset } from "./live.ts";
@@ -44,7 +44,10 @@ function siteInfo(config: Config): SiteInfo {
 		base: config.base,
 		serveRun: config.serveRun,
 		serveIgnore: config.serveIgnore,
-		watch: [dirs.input, ...config.watch.map((target) => path.resolve(dirs.root, target))],
+		// The includes, layouts and data folders when they're outside the input (`dirs.includes:
+		// "../theme"`): hexo.io's move kept its theme's includes beside `source/`, and an edit to a
+		// layout rebuilt nothing.
+		watch: [dirs.input, ...[dirs.includes, dirs.layouts, dirs.data].filter((dir) => !isInside(dirs.input, dir) && isDir(dir)), ...config.watch.map((target) => path.resolve(dirs.root, target))],
 		locate: locatorDirs(config),
 	};
 }

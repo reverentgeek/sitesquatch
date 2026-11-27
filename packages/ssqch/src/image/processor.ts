@@ -33,7 +33,7 @@ import { blake3 } from "../blake3.ts";
 import type { Config } from "../config.ts";
 import { BuildError, error, progress, warn, warning } from "../diagnostics.ts";
 import { rewriteHtml } from "../html.ts";
-import { displayPath, shown } from "../paths.ts";
+import { displayPath, isDir, isInside, shown } from "../paths.ts";
 import { bytes, count } from "../report.ts";
 import { debugString, escapeHtml } from "../modules/plugin-util.ts";
 import { colorPlan } from "./color.ts";
@@ -515,6 +515,8 @@ interface Context {
 	input: string;
 	output: string;
 	verbose: boolean;
+	/** Folders `passthrough` publishes, with the site path each is at (`["/abs/static", "/"]`): an image there is found by its URL too. */
+	copied: Array<[from: string, at: string]>;
 }
 
 let temporary = 0;
@@ -616,7 +618,20 @@ export class ImageProcessor {
 	startBuild(config: Config): void {
 		const root = config.root;
 		const input = path.resolve(root, config.input);
-		this.ctx = { root, input, output: path.resolve(root, config.output), verbose: config.verbose };
+		const output = path.resolve(root, config.output);
+		// The folders `passthrough` copies, where they land as site paths (`passthroughCopy` in
+		// build.ts): Hugo's, Gatsby's and Docusaurus's `static/` keep a site's pictures outside the
+		// input, and a Gatsby blog's `/media/...` were "not found" though the build published them.
+		const copied: Array<[string, string]> = [];
+		for (const { from, to } of config.passthrough ?? []) {
+			if (/[*?[{]/.test(from)) continue;
+			const src = path.resolve(root, from);
+			if (!isDir(src)) continue;
+			const dest = to !== undefined ? path.join(output, to) : path.join(output, isInside(input, src) ? path.relative(input, src) : isInside(root, src) ? path.relative(root, src) : src);
+			if (!isInside(output, dest)) continue;
+			copied.push([src, `/${path.relative(output, dest).split(path.sep).join("/")}`.replace(/\/+$/, "") + "/"]);
+		}
+		this.ctx = { root, input, output, verbose: config.verbose, copied };
 		this.memo.clear();
 		this.files.clear();
 		this.headers.clear();
@@ -734,14 +749,36 @@ export class ImageProcessor {
 		if (src === "" || src.includes("://") || src.startsWith("//") || src.startsWith("data:")) return undefined;
 		const ctx = this.context();
 		const clean = percentDecode(src.split(/[?#]/)[0]);
-		return clean.startsWith("/") ? joinPath(ctx.input, clean.slice(1)) : joinPath(path.dirname(pageInput), clean);
+		return clean.startsWith("/") ? this.fromSite(clean) : joinPath(path.dirname(pageInput), clean);
+	}
+
+	/** A site path's file: in the input folder, or else in a folder `passthrough` publishes at that path. */
+	private fromSite(clean: string): string {
+		const places = this.placesFor(clean);
+		return places.find((file) => this.isSource(file)) ?? places[0];
+	}
+
+	/** Where a site path's file can be, in the order they're tried: the input folder, then each `passthrough` folder published there. */
+	private placesFor(clean: string): string[] {
+		const ctx = this.context();
+		const at = clean.startsWith("/") ? clean : `/${clean}`;
+		const places = [joinPath(ctx.input, at.slice(1))];
+		for (const [from, prefix] of ctx.copied) if (at.startsWith(prefix)) places.push(joinPath(from, at.slice(prefix.length)));
+		return places;
+	}
+
+	/** Where an image that wasn't found was looked for, for its warning. */
+	private lookedFor(src: string, file: string): string {
+		const clean = percentDecode(src.split(/[?#]/)[0]);
+		const places = clean.startsWith("/") ? this.placesFor(clean) : [file];
+		return places.map((place) => this.display(place)).join(" and ");
 	}
 
 	/** A site path as a file in the input folder: `/content/logo.png` (or `content/logo.png`) is `<input>/content/logo.png`. `undefined` for a remote or `data:` URL. */
 	resolveSiteSrc(src: string): string | undefined {
 		if (src.includes("://") || src.startsWith("//") || src.startsWith("data:")) return undefined;
 		const clean = percentDecode(src.split(/[?#]/)[0]);
-		return joinPath(this.context().input, clean.replace(/^\/+/, ""));
+		return this.fromSite(clean);
 	}
 
 	/** What `imageUrl()` returns: one generated copy of the image at site path `src`, `width` pixels wide at most (0 is the original's), in `format`. A remote URL is only `{ url }`. */
@@ -1323,7 +1360,7 @@ export class ImageProcessor {
 					const file = sitePath(src);
 					if (file === undefined) return;
 					if (!this.isSource(file)) {
-						this.warnOnce(`feedHtml(): image not found: ${src}`);
+						this.warnOnce(`feedHtml(): image not found: ${src} (looked for ${this.lookedFor(src.startsWith("/") ? src : joinUrlPath(pagePath, src), file)})`);
 						return;
 					}
 					const own = parseU32(el.get("width"));
@@ -1487,7 +1524,7 @@ export class ImageProcessor {
 					const file = this.resolveSrc(src, pageInput);
 					if (file === undefined) return;
 					if (!this.isSource(file)) {
-						this.warnOnce(`image not found: ${src} (in ${pageInput})`);
+						this.warnOnce(`image not found: ${src} (in ${this.display(pageInput)}; looked for ${this.lookedFor(src, file)})`);
 						return;
 					}
 					// A plain `width` pins the image to that one width.

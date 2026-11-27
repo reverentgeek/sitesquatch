@@ -1418,3 +1418,23 @@ test("llms_txt_for_a_part_of_the_site_and_an_optional_section", () => {
 		assert.ok(!bad.ok && bad.log.includes(says), `${options}: ${bad.log}`);
 	}
 });
+
+// Found moving a Gatsby blog (2026-11-27, I1): Gatsby, Hugo and Docusaurus keep a site's pictures
+// in `static/`, which `passthrough` publishes at `/`, and imagePlugin() said "image not found" for
+// each one the build had just published. A picture is found there by its URL too, and one that
+// isn't anywhere says every place it was looked for.
+test("images_in_a_passthrough_folder_are_found", () => {
+	const dir = tempDir("image-passthrough");
+	write(dir, {
+		"ssqch.config.js": "import { imagePlugin } from \"ssqch/image\";\nexport default { dirs: { input: \"src\" }, passthrough: [{ static: \"/\" }], plugins: [imagePlugin({ widths: [100] })] };\n",
+		"src/index.md": "![A pine cone](/media/cone.png)\n\n![Gone](/media/gone.png)\n",
+	});
+	fs.mkdirSync(path.join(dir, "static/media"), { recursive: true });
+	fs.writeFileSync(path.join(dir, "static/media/cone.png"), PNG);
+	const r = ssqch(["build", "--root", dir]);
+	assert.ok(r.ok, r.log);
+	const html = read(dir, "_site/index.html");
+	assert.match(html, /<img [^>]*src="\/img\/[^"]+-64\.png" alt="A pine cone"/, html);
+	assert.ok(r.log.includes("image not found: /media/gone.png (in ./src/index.md; looked for ./src/media/gone.png and ./static/media/gone.png)"), r.log);
+	assert.ok(!r.log.includes("not found: /media/cone.png"), r.log);
+});

@@ -29,6 +29,7 @@ export default defineConfig({
 | `sourceLinks` | `false` | Links to `.md` files go to the page built from that file, as GitHub, MkDocs and jekyll-relative-links read them: `[Setup](setup/install.md#first-steps)` links to that page's URL with its `#` part. `true` writes the URL from the site's root (`/setup/install/#first-steps`); `"relative"` writes it from the page, as MkDocs does (`setup/install/#first-steps`, `../../` back to the home page). A link to a `.md` file that isn't a page is left as it is, so the link checker reports it. It applies to pages' Markdown, not the `markdown` filter. |
 | `indentedCode` | `true` | Lines indented four spaces are code. `false` makes them ordinary Markdown, for HTML indented inside Markdown; fences are still code. |
 | `highlight` | `false` | Syntax highlighting at build time (below). `true`, or `{ css: "/assets/code.css" }` to put the stylesheet somewhere else, or `{ css: false }` to leave it out. `languages` adds languages or replaces built-in ones: `{ languages: { chordpro: code => tokens, cho: "chordpro", snack: "grammars/snack.sublime-syntax" } }` (below). `classes` names the tokens as another highlighter does: `{ classes: "prism" }` ([below](#another-highlighters-classes)). |
+| `math` | `false` | TeX math, kept as written for KaTeX or MathJax: `$...$` inline and `$$...$$` for display, where a `$` in prose (`$5 and $10`) stays a dollar. `{ render: "katex" }` renders each formula at build time with the site's own `katex` package, and `katex` passes KaTeX's options: `{ render: "katex", katex: { macros: { "\\RR": "\\mathbb{R}" } } }` ([below](#math-with-katex-or-mathjax)). |
 | `preprocess` | none | A function of yours that changes a page's Markdown before ssqch reads it: `preprocess: (source, data) => source.replace(/<script setup>[\s\S]*?<\/script>\n?/g, "")` leaves out Vue's `<script setup>` blocks. It gets the page's Markdown (after front matter, and after the template language when `markdownEngine` runs one) and the page's data (`data.page.inputPath`), and returns the Markdown (or a promise of it). It runs for pages, not for the `markdown` filter; an error in it names the page. For a step that's a language of its own, an engine in `markdownEngine` works too. |
 
 Another generator's Markdown, for a site moving from it, is a plugin of its own, each documented in its trailhead: `fromJekyll()` (kramdown's Markdown inside HTML, its heading ids), `fromMkdocs()` (Python-Markdown, admonitions and tabs), `fromHugo()` (shortcodes as containers) and `fromVitepress()` (VitePress's containers, headings, links and code blocks).
@@ -142,6 +143,50 @@ A fence hook writes the whole block, so it has to write `<pre><code>` itself: `f
 ```
 
 **Code spans:** a `code.*` hook writes each inline code span (`` `ssqch build` ``) from its text, `code.code`, which the template escapes as a fence hook's does (Jinja and Nunjucks do it by themselves; in Liquid, `{{ code.code | escape }}`). A site moving from GitHub Pages keeps its CSS for Rouge's markup with `<code class="language-plaintext highlighter-rouge">{{ code.code }}</code>`. Fences don't go through it; they have `fence.*`.
+
+## Math with KaTeX or MathJax
+
+With `math: true`, TeX between dollar signs is math, kept as written: `$...$` inline and `$$...$$` for display. Without it, Markdown reads TeX as its own, before KaTeX or MathJax can see it, and with no warning: `$a*b*c$` gets an `<em>`, `$\{x\}$` loses its backslashes and `\\` in `\begin{cases}` becomes `\`. With it, the formula reaches the page as you wrote it:
+
+```js
+export default { markdown: { math: true } };
+```
+
+```markdown
+The trail climbs $h = 2^n$ meters, where $n$ is the number of pine cones.
+
+$$
+f(x) = \begin{cases} x^2 & \text{if } x > 0 \\ 0 & \text{otherwise} \end{cases}
+$$
+```
+
+**What a formula becomes:** inline math is `<span class="math math-inline">\(h = 2^n\)</span>`, and display math on lines of its own is `<div class="math math-display">\[...\]</div>` (`$$...$$` inside a line is a `<span class="math math-display">`, since a paragraph can't hold a `<div>`). The TeX is as written, only escaped for HTML (`<` is `&lt;`, which the browser reads back as `<`). `\(...\)` and `\[...\]` are the delimiters KaTeX's auto-render and MathJax look for by default, so either renders the page's formulas with no settings of its own, and the `math` class with `math-inline` or `math-display` (pulldown-cmark's names, which older remark-math setups write too) gives CSS something to hold on to. KaTeX's auto-render, in the layout (with the version you want):
+
+```html
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.22/dist/katex.min.css">
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.22/dist/katex.min.js"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.22/dist/contrib/auto-render.min.js" onload="renderMathInElement(document.body)"></script>
+```
+
+Or MathJax: `<script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-chtml.js"></script>`. To render at build time instead, with no script in the page, see `render: "katex"` below.
+
+**When a dollar is a dollar:** the rules are GitHub's (pulldown-cmark's), with pandoc's and markdown-it-katex's rule about digits, so prices stay prices. An opening `$` can't be followed by a space, and a closing `$` can't come after a space or be followed by a digit: `$5 and $10` and `$20-$30` are text. `\$` is a dollar sign, in text and in TeX (`$\$5$`), and a `$` on its own is text. Code spans and fenced code aren't read for math, and whichever opens first wins: `` `$x$` `` is code. Braces in inline math have to balance (`$}{$` is text), and a blank line ends a formula, as it ends a paragraph. In a table, a `|` in a formula ends its cell, as on GitHub: write `\vert` (or `\lvert ... \rvert`) for the bar. A fence with the language `math` stays a code block (a fence hook, `_includes/hooks/fence-math.*`, can make it a formula).
+
+**Template code in math:** a Markdown page runs through its `markdownEngine` (Jinja, unless you change it) before it's Markdown, and TeX's braces can be template code there: `{{` starts an expression, `{%` a tag and `{#` a comment. `\frac{{a}}{b}` would lose `{a}` (an undefined `a` prints as nothing, so the page has `\frac{b}`), and `x^{{2}}` would become `x^2`: the build warns about each page with a formula like that, at the first one's line (a `template` warning), so nothing is lost quietly. `{%` is an error on the formula's line (`unknown statement`), `{%` is an error on the formula's line (`unknown statement`), and an unclosed `{#` is an error that names the page (`expected end of comment, got end of file`). TeX ignores spaces in math, so a space between the braces keeps a formula as written in every engine: `\frac{ {a} }{b}`, `\{ \#1 \}`. Or put the formula, or the page, between `{% raw %}` and `{% endraw %}` (Jinja, Nunjucks and Liquid), or set `markdownEngine: false` when the site's Markdown has no template code.
+
+**Where math is read:** in pages' Markdown, the `markdown` filter (`{{ summary | markdown }}`) and `markdown()` from `ssqch` while the site builds (`markdown()` called as the config loads, before the site's options are read, has math off). A heading's `id` uses the TeX as written (`## The $\alpha$ case` is `#the-alpha-case`), and its `page.headings` text, for `toc`, is the formula's markup as written (`\(\alpha\)`, which the page's script renders in the table of contents too) or, rendered at build time, its characters (`α`). A Markdown page's copy for `llmsPlugin()` is its Markdown, TeX and all, and a copy made from a page's HTML writes each formula back as `$...$` or `$$...$$`. A feed's content (`feedPlugin()`, and `feedHtml` in a feed template) is the page's HTML; formulas rendered at build time go in it as KaTeX's MathML alone, which feed readers show without a stylesheet. Hooks see a formula's markup inside `heading.content` and a container's `container.content`.
+
+**KaTeX at build time:** `math: { render: "katex" }` renders each formula while the site builds, with the site's own KaTeX (ssqch doesn't come with it, so the version is yours): install it with `npm install -D katex`. Pages need no script, but they still need KaTeX's stylesheet and its fonts: link `katex/dist/katex.min.css`, from a CDN at the version you installed, or copied with `passthrough: { "node_modules/katex/dist/**": "katex" }` and linked as `/katex/katex.min.css`.
+
+```js
+export default {
+  markdown: {
+    math: { render: "katex", katex: { macros: { "\\RR": "\\mathbb{R}" } } },
+  },
+};
+```
+
+`katex` is KaTeX's own options for its `renderToString` (`macros`, `strict`, `trust`, `output`, `fleqn`...), the same for every formula: ssqch sets `displayMode` for each, and `throwOnError: true` unless you set it. The formula's element stays (`<span class="math math-inline">` with KaTeX's HTML inside). A formula KaTeX can't render is an error with its page and line: `src/posts/trail.md:12: KaTeX can't render $\fraq{a}{b}$: Undefined control sequence: \fraq (at character 1)`. With katex not installed, the first page with math says what to run: ``markdown.math: render: "katex" needs the katex package in the site's packages: `npm install -D katex` `` (or `pnpm add -D katex`, by the site's lockfile). A mistyped option is an error that names it (`markdown.math.render must be "katex" ...`); MathJax has no build-time rendering here, so `render: "mathjax"` is one too: use its script in the page.
 
 ## Your own highlighter, step by step
 

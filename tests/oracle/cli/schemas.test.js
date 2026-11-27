@@ -82,7 +82,8 @@ test("a_date_that_isnt_one_points_at_its_line", () => {
 	assert.ok(r.log.includes("  --> src/t.md:3\n") && r.log.includes("   3 | date: last Tuesday\n"), r.log);
 	r = ssqch(["build", "--root", dir, "--format", "json"]);
 	const [first] = JSON.parse(r.stdout).errors;
-	assert.deepEqual([first.code, first.file, first.field], ["front-matter", "src/t.md", "date"], r.stdout);
+	// DELIBERATE (0.16.2, the new docs site's rerun): the JSON has the line the text points at.
+	assert.deepEqual([first.code, first.file, first.line, first.field], ["front-matter", "src/t.md", 3, "date"], r.stdout);
 	// Without a schema, the same error.
 	write(dir, { "ssqch.config.js": "export default { dirs: { input: \"src\" } };\n" });
 	r = ssqch(["build", "--root", dir]);

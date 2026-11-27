@@ -68,8 +68,12 @@ export function renderComponents(html: string, render: RenderComponent, data: Re
 		// The name ends where the tag's name does: `<Trail-Map>` is a custom element, not `Trail`.
 		const name = /^<([A-Za-z][A-Za-z0-9]*)(?=[\s/>])/.exec(html.slice(lt, lt + 80))?.[1];
 		if (name === undefined || !isComponentName(name)) {
-			out += "<";
-			i = lt + 1;
+			// Another element's start tag is copied whole, so a `<Function>` written in one of its
+			// attributes (`title="value <string> | <Function>"`, on hexo.io's API pages) is text.
+			const element = name === undefined ? undefined : openTag(html, lt + 1 + name.length);
+			const stop = element === undefined ? lt + 1 : element.end;
+			out += html.slice(lt, stop);
+			i = stop;
 			continue;
 		}
 		const open = openTag(html, lt + 1 + name.length);
@@ -118,6 +122,15 @@ function openTag(html: string, from: number): { attrs: Array<[string, string | t
 		i++;
 		while (i < html.length && /\s/.test(html[i])) i++;
 		const quote = html[i];
+		// JSX's value (`height={500}`, `style={{ color: "red" }}`, as MDX and React pages write
+		// them) is a binding, read as `:height="500"` is: before, it was the text `{500}`.
+		if (quote === "{") {
+			const end = jsxEnd(html, i);
+			if (end === -1) return undefined;
+			attrs.push([`:${name}`, decode(html.slice(i + 1, end).trim())]);
+			i = end + 1;
+			continue;
+		}
 		if (quote === "\"" || quote === "'") {
 			const end = html.indexOf(quote, i + 1);
 			if (end === -1) return undefined;
@@ -130,6 +143,21 @@ function openTag(html: string, from: number): { attrs: Array<[string, string | t
 			if (value.endsWith("/") && html[i] === ">") i--;
 		}
 	}
+}
+
+/** Where the `{` at `open` closes, past strings, template literals and nested braces; -1 when it doesn't. */
+export function jsxEnd(text: string, open: number): number {
+	let depth = 0;
+	for (let i = open; i < text.length; i++) {
+		const c = text[i];
+		if (c === "\"" || c === "'" || c === "`") {
+			for (i++; i < text.length && text[i] !== c; i++) if (text[i] === "\\") i++;
+			continue;
+		}
+		if (c === "{") depth++;
+		else if (c === "}" && --depth === 0) return i;
+	}
+	return -1;
 }
 
 /** The end tag that closes the component opened before `from`, counting ones of the same name inside it. */

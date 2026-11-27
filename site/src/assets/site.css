@@ -246,9 +246,11 @@ button.menu-link:hover { background: var(--selected); }
 .hero .lead, .lost .lead { max-width: 36rem; margin: 0 0 1.75rem; font-size: 1.2rem; line-height: 1.55; }
 
 /* Exhibit A: the drawing as the one clear photograph, taped to map paper. */
-.exhibit { position: relative; justify-self: center; width: min(100%, 21rem); margin: 0; padding: 1rem 1rem 0.8rem; border: 1px solid var(--paper-edge); background: var(--paper); box-shadow: 0 1px 0 var(--paper-edge), 0.5rem 0.6rem 0 rgb(35 59 43 / 0.14); transform: rotate(2.2deg); }
-.exhibit .photo { display: grid; place-items: center; aspect-ratio: 1; border: 1px solid var(--paper-edge); background: var(--paper-light); }
-.exhibit .photo img { width: 86%; }
+/* A print: white photo paper with a gray edge, the same in both modes. */
+.exhibit { position: relative; justify-self: center; width: min(100%, 21rem); margin: 0; padding: 1rem 1rem 0.8rem; border: 1px solid #ddd9cf; background: #fdfcf9; box-shadow: 0 1px 0 var(--paper-edge), 0.5rem 0.6rem 0 rgb(35 59 43 / 0.14); transform: rotate(2.2deg); }
+/* The "photo": a clearing among the pines behind him, his shoulders on the frame's bottom edge, as a portrait is cropped. The same in dark mode: it's a print. */
+.exhibit .photo { display: grid; place-items: end center; aspect-ratio: 1; overflow: hidden; border: 1px solid #e4e0d6; background: #e2794a url("/assets/exhibit-forest.svg") center / cover no-repeat; }
+.exhibit .photo img { display: block; width: 88%; height: auto; }
 .exhibit figcaption { padding-top: 0.6rem; font-family: var(--mono); font-size: 0.8rem; color: var(--exhibit-text); text-align: center; }
 .exhibit::before, .exhibit::after { content: ""; position: absolute; width: 3.6rem; height: 1.3rem; background: rgb(232 175 67 / 0.75); }
 .exhibit::before { top: -0.6rem; left: -1.1rem; transform: rotate(-38deg); }

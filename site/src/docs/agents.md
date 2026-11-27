@@ -80,6 +80,20 @@ Every move from another generator so far ran the same loop: build the old site, 
 5. **Done is a decision.** Stop at `No differences`, or when what's left is on purpose: write each one down with why (an `--ignore` pattern with a comment, or a line in the move's notes). `ssqch diff --exact` shows the bytes that still differ, such as a minifier's.
 6. **Then ssqch's own features,** one at a time (its Markdown, highlighting, minifying, `toc()`), with a diff after each, so every change in the output has one cause.
 
+### When the reference isn't what it seems
+
+A reference build that's quietly different from the site's real one costs more than any other step: every difference after it is chased in the wrong place. The moves so far met these, each without a word from the old generator:
+
+- **Dates from git.** `baseline` builds copies of the files git would commit, without their history, so a generator that reads git (Docusaurus's "Last updated", Eleventy's `git Last Modified`) has none to read and leaves the dates out. Build the commit instead: `--commit HEAD` copies it with its history.
+- **An install below the root.** `node_modules` beside the root's `package.json` is linked into each copy; one in a folder below it (a docs site in `website/`) isn't. Install there in each copy as part of the command (`"cd website && npm ci && npm run build"`), or link it with `--link website/node_modules`.
+- **Bundlers and linked installs.** webpack and rspack (Docusaurus, Gatsby, Next.js) name CSS modules' classes and chunks by each file's real path, and a linked `node_modules` is somewhere else: every class on every page differs from the site's own build, and the copies agree with each other. `--copy-installs` copies the installs in instead, and a warm cache (`node_modules/.cache`) left from another build makes a run faster than it'll be in CI.
+- **pnpm and a linked `node_modules`.** pnpm 11 checks the install before `pnpm run` and tries to install again when it's linked. Call the tool itself in the command: `node_modules/.bin/docusaurus build`.
+- **A fetch at build time.** A build that downloads content (other repositories' docs, an API) builds whatever is there that day. Pin it in the command, as the site allows (`DOCS_REF=v5.0.0 npm run build`), or save what it fetched and point the build at the copy.
+- **"The same" isn't byte for byte.** `baseline` says builds are the same as `ssqch diff` would: attribute order and whitespace between tags aside. `ssqch diff --exact .cache/ssqch/baseline/ref-1 .cache/ssqch/baseline/ref-2` shows the bytes that differ.
+- **Check run 1 against the site's own.** When the site was built in place before (its `build/` or `public/`), `ssqch diff --exact <that folder> .cache/ssqch/baseline/ref-1` should say `No differences`, or only what varies by itself. A difference there is the reference's, not ssqch's.
+
+Two things a move often needs at the end: an exact comparison with fingerprinted names left out, `ssqch diff ref dist --exact --ignore '\.[0-9a-f]{8}\.(?:css|js)'`, and a patch of everything the move added, new files too, `git add -N . && git diff --binary > move.patch`.
+
 ### A move, step by step
 
 A small Eleventy blog (three posts, an About page, a feed from `@11ty/eleventy-plugin-rss`, a `posts` collection and two date filters) moved with the loop above, with each command's real output, trimmed. The site is in git, and each step is a commit an agent can go back to.

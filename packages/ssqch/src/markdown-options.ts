@@ -61,6 +61,16 @@ export interface MarkdownOptions {
 	htmlUrls: boolean;
 	/** Plugins' Markdown steps (a plugin's `markdown: { before, after, hooks }`), in the order the plugins are listed. Set from the plugins, not from `markdown`. */
 	steps: MarkdownSteps;
+	/** TeX between `$` and `$$` is math, kept as written (`math: true`), and rendered with the site's KaTeX at build time with `render: "katex"`; `null` when it's off. */
+	math: MathOptions | null;
+}
+
+/** `markdown.math` when it's on. */
+export interface MathOptions {
+	/** `"katex"`: each formula rendered with the site's own `katex` package while the site builds; `null` leaves the TeX for a script in the page (KaTeX's auto-render or MathJax). */
+	render: "katex" | null;
+	/** KaTeX's own options for `renderToString` (`macros`, `strict`, `trust`...), with `displayMode` set by ssqch for each formula. */
+	katex: Record<string, unknown>;
 }
 
 /** What a plugin's Markdown step or hook gets besides its text: the page, and the engine's own tools. */
@@ -119,11 +129,12 @@ export function defaultMarkdownOptions(): MarkdownOptions {
 		dialect: null,
 		htmlUrls: false,
 		steps: { before: [], after: [], hooks: new Map() },
+		math: null,
 	};
 }
 
 /** The option names in `ssqch.config.js` (`markdown: { headingIds: "blackfriday" }`). */
-export const MARKDOWN_KEYS = ["headingIds", "headingAttributes", "footnotes", "taskLists", "autolinks", "alerts", "containers", "definitionLists", "smartPunctuation", "indentedCode", "highlight", "breaks", "figures", "sourceLinks", "preprocess"] as const;
+export const MARKDOWN_KEYS = ["headingIds", "headingAttributes", "footnotes", "taskLists", "autolinks", "alerts", "containers", "definitionLists", "smartPunctuation", "indentedCode", "highlight", "breaks", "figures", "sourceLinks", "preprocess", "math"] as const;
 
 const FLAGS = ["headingAttributes", "footnotes", "taskLists", "alerts", "definitionLists", "smartPunctuation", "indentedCode", "breaks", "figures"] as const;
 
@@ -227,6 +238,8 @@ export function applyMarkdownOptions(options: MarkdownOptions, value: unknown, f
 					} else bail(`markdown.highlight.${k} isn't an option (options: classes, css, languages)`);
 				}
 			} else bail(`markdown.highlight must be true, false or { classes, css, languages }, not ${typeOf(v)}`);
+		} else if (key === "math") {
+			options.math = mathOptions(v);
 		} else if (key === "autolinks") {
 			if (typeof v !== "boolean" && v !== "fuzzy" && v !== "email") bail(`markdown.autolinks must be true, false, "email" or "fuzzy", not ${typeof v === "string" ? `"${v}"` : typeOf(v)}`);
 			options.autolinks = v;
@@ -248,6 +261,29 @@ export function applyMarkdownOptions(options: MarkdownOptions, value: unknown, f
 	}
 	// VitePress's markdown-it, for what the site doesn't set itself: its heading ids, linkify
 	// without bare domains, and markdown-it-container's closing `:::`.
+}
+
+/** `markdown.math`: `true`, `false`, or `{ render: "katex", katex: { ... } }`. */
+function mathOptions(v: unknown): MarkdownOptions["math"] {
+	if (v === false || v === null) return null;
+	if (v === true) return { render: null, katex: {} };
+	if (!isPlainObject(v)) bail(`markdown.math must be true, false or { render: "katex", katex }, not ${typeof v === "string" ? `"${v}"` : typeOf(v)}`);
+	const math: MathOptions = { render: null, katex: {} };
+	for (const [k, setting] of Object.entries(v)) {
+		if (k === "render") {
+			if (setting === "katex") math.render = "katex";
+			else if (setting === false || setting === null) math.render = null;
+			else bail(`markdown.math.render must be "katex" (KaTeX renders each formula while the site builds) or false (a script in the page renders them), not ${typeof setting === "string" ? `"${setting}"` : typeOf(setting)}`);
+		} else if (k === "katex") {
+			if (!isPlainObject(setting)) bail(`markdown.math.katex must be an object of KaTeX's options, like { macros: { "\\RR": "\\mathbb{R}" } }, not ${typeOf(setting)}`);
+			math.katex = setting;
+		} else {
+			const near = closest(k, ["render", "katex"]);
+			bail(`markdown.math.${k} isn't an option${near ? ` (did you mean \`${near}\`?)` : ""} (options: render, katex)`);
+		}
+	}
+	if (Object.keys(math.katex).length && math.render !== "katex") bail("markdown.math.katex is KaTeX's options for rendering at build time: add render: \"katex\", or give them to the KaTeX script in your layout");
+	return math;
 }
 
 /** The keys a plugin's `markdown` part can have. */
