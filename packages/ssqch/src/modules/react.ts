@@ -14,6 +14,9 @@
 // `hydrate`, one for the browser, in `.cache/ssqch/react/`; while serving, that's skipped unless a
 // file the bundle read changed. React's `renderToString` answers at once, so a tag is its HTML in
 // the components step (`_includes/components/` comes first), with no marker to fill in later.
+// That step renders the innermost tag first, so a parent gets its children as HTML; when they're
+// only components this page just rendered, the parent renders them again as React elements, as
+// MDX would give them (a `<Tabs>` that reads its `<TabItem>`s' props).
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
@@ -21,7 +24,7 @@ import { pathToFileURL } from "node:url";
 import { BUILTINS } from "../config.ts";
 import type { Config, GeneratedFile } from "../config.ts";
 import { BuildError, bail, error } from "../diagnostics.ts";
-import { bindingValue } from "../components.ts";
+import { jsxEnd } from "../components.ts";
 import { addMarkdownSteps } from "../markdown-options.ts";
 import { startReading } from "../plugin-files.ts";
 import { realPath } from "../paths.ts";
@@ -38,7 +41,7 @@ export function reactPlugin(options: Record<string, unknown> = {}) {
 }
 
 /** A component a page imports: the module (as written) and which of its exports. */
-export interface ImportedComponent { spec: string; export: string }
+export interface ImportedComponent { spec: string; export: string; /** The import's line, from 0. */ line: number }
 
 const IMPORT = /^import\s+(?:([A-Z][\w$]*)\s*,?\s*)?(?:\{([^}]*)\}\s*)?from\s*(['"])([^'"]+)\3\s*;?\s*$/;
 
@@ -66,13 +69,13 @@ export function pageImports(markdown: string): { components: Record<string, Impo
 		if (!found) continue;
 		const [, def, named, , spec] = found;
 		let any = false;
-		if (def) { components[def] = { spec, export: "default" }; any = true; }
+		if (def) { components[def] = { spec, export: "default", line: i }; any = true; }
 		for (const part of (named ?? "").split(",")) {
 			const pair = /^\s*([\w$]+)(?:\s+as\s+([\w$]+))?\s*$/.exec(part);
 			if (!pair) continue;
 			const local = pair[2] ?? pair[1];
 			if (!/^[A-Z]/.test(local)) continue;
-			components[local] = { spec, export: pair[1] };
+			components[local] = { spec, export: pair[1], line: i };
 			any = true;
 		}
 		if (!any) continue;
@@ -132,7 +135,7 @@ function jsxTag(text: string, from: number): { attrs: string; end: number } | un
 			continue;
 		}
 		if (c === "{") {
-			const close = braceEnd(text, i);
+			const close = jsxEnd(text, i);
 			if (close === -1) return undefined;
 			const expr = text.slice(i + 1, close).trim();
 			// `name={expr}`: the binding `:name="expr"`. A `{...spread}` has no name, and is left as written.
@@ -147,21 +150,6 @@ function jsxTag(text: string, from: number): { attrs: string; end: number } | un
 		i++;
 	}
 	return undefined;
-}
-
-/** Where the `{` at `open` closes, past strings, template literals and nested braces; -1 when it doesn't. */
-function braceEnd(text: string, open: number): number {
-	let depth = 0;
-	for (let i = open; i < text.length; i++) {
-		const c = text[i];
-		if (c === "\"" || c === "'" || c === "`") {
-			for (i++; i < text.length && text[i] !== c; i++) if (text[i] === "\\") i++;
-			continue;
-		}
-		if (c === "{") depth++;
-		else if (c === "}" && --depth === 0) return i;
-	}
-	return -1;
 }
 
 /** The line (from 1) of the `nth` (from 0) `<Name` tag in `source` outside code, or undefined when it has fewer (the tag is in a layout). */
@@ -187,8 +175,13 @@ function sitePackage(root: string, name: string): string | undefined {
 
 const HYDRATE = ["load", "idle", "visible"] as const;
 type When = typeof HYDRATE[number];
-/** Where a component's children go in its HTML until they're put in: a private-use character no React or Markdown writes. */
-const SLOT = "";
+/** Where a component's children go in its HTML until they're put in (`\uE052<n>\uE053`): private-use characters no React or Markdown writes. */
+const SLOTS = /\uE052(\d+)\uE053/g;
+/** What a relative import without its extension can mean, as esbuild reads it. */
+const EXTENSIONS = [".jsx", ".tsx", ".js", ".ts", ".mjs", ".mts"];
+
+/** A component as the server renders it: its children the components inside it, or HTML. */
+interface Tree { id: string; props: Record<string, unknown>; kids?: Tree[]; content?: string }
 
 /** A component's module and export, as the bundles import it. */
 interface Entry { file: string; export: string; name: string; id: string }
@@ -235,13 +228,18 @@ BUILTINS.set("ssqch/react", (config: Config, given) => {
 	let byPage = new Map<string, Record<string, Entry>>();
 	let globalEntries: Record<string, Entry> = {};
 	let entries = new Map<string, Entry>();
-	let render: ((id: string, props: Record<string, unknown>, slot: string | undefined) => string) | undefined;
+	let server: { render(tree: unknown): string; island(id: string, props: Record<string, unknown>, slot: string | undefined): string } | undefined;
 	let builtFrom = "";
 	let inputs = new Set<string>();
 	let islands = false;
 	// Which of a page's tags of one name this is, for the line of the one that failed.
 	let seen = new Map<string, number>();
 	const sources = new Map<string, string>();
+	// Where each component is imported (its first page and line), for an import esbuild can't find.
+	let importedAt = new Map<string, { page: string; line: number; spec: string }>();
+	// The components this page rendered, by their HTML, so a parent whose children are only components gets them as React elements.
+	let rendered = new Map<string, Tree>();
+	let renderedFor = "";
 
 	/** The `.md` files under the input folder, and each one's imported components. */
 	const scan = () => {
@@ -254,7 +252,20 @@ BUILTINS.set("ssqch/react", (config: Config, given) => {
 				if (!/\.(?:md|markdown)$/i.test(e.name)) continue;
 				const found = pageImports(fs.readFileSync(full, "utf8")).components;
 				const own: Record<string, Entry> = {};
-				for (const [name, imp] of Object.entries(found)) own[name] = entryOf(imp.spec.startsWith(".") ? path.resolve(path.dirname(full), imp.spec) : imp.spec, imp.export, name);
+				for (const [name, imp] of Object.entries(found)) {
+					let file = imp.spec;
+					if (imp.spec.startsWith(".")) {
+						const at = path.resolve(path.dirname(full), imp.spec);
+						const there = [at, ...EXTENSIONS.map((ext) => at + ext), ...EXTENSIONS.map((ext) => path.join(at, `index${ext}`))].find((f) => fs.statSync(f, { throwIfNoEntry: false })?.isFile());
+						if (there === undefined) {
+							const message = `reactPlugin(): ${shownFile(full)}:${imp.line + 1} imports ${imp.spec}, which isn't there (no file, and none with ${EXTENSIONS.join(", ")})`;
+							throw new BuildError(message, [error("template", message, { file: shownFile(full), line: imp.line + 1 })]);
+						}
+						file = at;
+					}
+					own[name] = entryOf(file, imp.export, name);
+					if (!importedAt.has(own[name].id)) importedAt.set(own[name].id, { page: shownFile(full), line: imp.line + 1, spec: imp.spec });
+				}
 				if (Object.keys(own).length) pages.set(path.resolve(full), own);
 			}
 		};
@@ -280,6 +291,9 @@ BUILTINS.set("ssqch/react", (config: Config, given) => {
 		islands = false;
 		seen = new Map();
 		sources.clear();
+		importedAt = new Map();
+		rendered = new Map();
+		renderedFor = "";
 		byPage = scan();
 		globalEntries = Object.fromEntries(Object.entries(globals as Record<string, string>).map(([name, file]) => [name, entryOf(globalFile(file), "default", name)]));
 		entries = new Map();
@@ -299,8 +313,11 @@ BUILTINS.set("ssqch/react", (config: Config, given) => {
 		const changed = Array.isArray(config.changed) ? config.changed : undefined;
 		const touched = changed === undefined || changed.some((f) => { try { return inputs.has(realPath(f)); } catch { return true; } });
 		const read = startReading(config, "ssqch/react");
-		if (render && key === builtFrom && !touched) { for (const f of inputs) read.add(f); return; }
-		if (!ids.length) { render = undefined; builtFrom = key; inputs = new Set(); return; }
+		if (server && key === builtFrom && !touched) { for (const f of inputs) read.add(f); return; }
+		// Nothing to render with until the new bundle works: a failed one isn't kept for the next build.
+		server = undefined;
+		builtFrom = "";
+		if (!ids.length) { builtFrom = key; inputs = new Set(); return; }
 		const esbuildModule = await fromSite("esbuild");
 		await fromSite("react");
 		await fromSite("react-dom");
@@ -309,8 +326,8 @@ BUILTINS.set("ssqch/react", (config: Config, given) => {
 		fs.mkdirSync(cache, { recursive: true });
 		const importPath = (file: string) => JSON.stringify(path.isAbsolute(file) ? file.split(path.sep).join("/") : file);
 		const pick = `const pick = (m, exp, name) => (exp === "default" ? (m.default ?? m[name]) : m[exp]);`;
-		const server = path.join(cache, "server.js");
-		fs.writeFileSync(server, [
+		const serverEntry = path.join(cache, "server.js");
+		fs.writeFileSync(serverEntry, [
 			`import { createElement } from "react";`,
 			`import { renderToString } from "react-dom/server";`,
 			...ids.map((id, i) => `import * as M${i} from ${importPath(entries.get(id)!.file)};`),
@@ -318,8 +335,10 @@ BUILTINS.set("ssqch/react", (config: Config, given) => {
 			`export const components = {`,
 			...ids.map((id, i) => `  ${JSON.stringify(id)}: pick(M${i}, ${JSON.stringify(entries.get(id)!.export)}, ${JSON.stringify(entries.get(id)!.name)}),`),
 			`};`,
+			`const element = (t) => createElement(components[t.id], t.props, ...(t.kids ? t.kids.map(element) : t.slot === undefined ? [] : [t.slot]));`,
+			`export function render(tree) { return renderToString(element(tree)); }`,
 			// An island's children are HTML React mustn't touch, in an element that takes no room, so the browser's render matches.
-			`export function render(id, props, slot) {`,
+			`export function island(id, props, slot) {`,
 			`  const children = slot === undefined ? props.children : createElement("ssqch-children", { style: { display: "contents" }, dangerouslySetInnerHTML: { __html: slot } });`,
 			`  return renderToString(createElement(components[id], children === undefined ? props : { ...props, children }));`,
 			`}`,
@@ -338,16 +357,29 @@ BUILTINS.set("ssqch/react", (config: Config, given) => {
 			loader: { ".js": "jsx", ...loaders, ...((extra.loader as object | undefined) ?? {}) },
 		};
 		const failed = (where: string, e: unknown) => {
-			const errors = (e as { errors?: Array<{ text: string; location?: { file: string; line: number } | null }> }).errors;
+			const errors = (e as { errors?: Array<{ text: string; location?: { file: string; line: number; lineText?: string } | null }> }).errors;
 			const first = errors?.[0];
-			const said = first ? `${first.location ? `${first.location.file}:${first.location.line} ` : ""}${first.text}` : e instanceof Error ? e.message : String(e);
+			const loc = first?.location;
+			// An import in ssqch's own entry module is a page's import (or the config's): said as that.
+			if (first && loc && /(?:^|\/)\.cache\/ssqch\/react\/(?:server|client)\.js$/.test(loc.file.replaceAll("\\", "/"))) {
+				const id = ids.find((i) => (loc.lineText ?? "").includes(importPath(entries.get(i)!.file)));
+				const at = id === undefined ? undefined : importedAt.get(id);
+				const named = id === undefined ? undefined : Object.entries(globalEntries).find(([, g]) => g.id === id)?.[0];
+				const text = first.text.replace(/^Could not resolve "[^"]*"/, "can't find it");
+				if (at) {
+					const message = `reactPlugin(): ${at.page}:${at.line} imports ${at.spec}, and esbuild ${text.startsWith("can't") ? text : `says: ${text}`} (a package to install, or an alias in reactPlugin()'s esbuild option)`;
+					return new BuildError(message, [error("template", message, { file: at.page, line: at.line })]);
+				}
+				if (named) return new BuildError(`reactPlugin(): components.${named} is ${shown((globals as Record<string, string>)[named])}, and esbuild ${text.startsWith("can't") ? text : `says: ${text}`}`);
+			}
+			const said = first ? `${loc ? `${loc.file}:${loc.line} ` : ""}${first.text}` : e instanceof Error ? e.message : String(e);
 			return new BuildError(`reactPlugin(): esbuild couldn't build the components for the ${where}: ${said}`);
 		};
 		let built;
 		try {
 			built = await esbuild.build({
 				...shared,
-				entryPoints: [server],
+				entryPoints: [serverEntry],
 				outdir: path.join(cache, "ssr"),
 				entryNames: "server",
 				platform: "node",
@@ -359,7 +391,7 @@ BUILTINS.set("ssqch/react", (config: Config, given) => {
 			});
 		} catch (e) { throw failed("server", e); }
 		inputs = new Set(Object.keys(built.metafile?.inputs ?? {}).filter((f) => !f.split(/[\\/]/).includes("node_modules") && !f.includes(":")).map((f) => { const full = path.resolve(config.root, f); try { return realPath(full); } catch { return full; } }));
-		inputs.delete(realPath(server));
+		inputs.delete(realPath(serverEntry));
 		for (const f of inputs) read.add(f);
 		const mod = await import(`${pathToFileURL(path.join(cache, "ssr", "server.js")).href}?${Date.now()}`);
 		for (const id of ids) {
@@ -367,7 +399,6 @@ BUILTINS.set("ssqch/react", (config: Config, given) => {
 			const entry = entries.get(id)!;
 			if (typeof c !== "function" && (typeof c !== "object" || c === null)) throw new BuildError(`reactPlugin(): ${shownFile(entry.file)} has no ${entry.export === "default" ? `default export (or one named ${entry.name})` : `export named ${entry.export}`} to render as <${entry.name}>`);
 		}
-		render = mod.render;
 		// The browser's: each hydrated component its own chunk, loaded where a page has it.
 		const hydrated = ids.filter((id) => anyHydrate && [...Object.entries(globalEntries), ...[...byPage.values()].flatMap((m) => Object.entries(m))].some(([name, e]) => e.id === id && hydrateFor(name) !== false));
 		if (hydrated.length) {
@@ -408,6 +439,7 @@ BUILTINS.set("ssqch/react", (config: Config, given) => {
 				});
 			} catch (e) { throw failed("browser", e); }
 		}
+		server = mod;
 		builtFrom = key;
 	} });
 
@@ -418,8 +450,24 @@ BUILTINS.set("ssqch/react", (config: Config, given) => {
 		return text;
 	};
 
+	/** `content`'s components, when it's only components this page rendered (and space between them); undefined when it's anything more. */
+	const componentsIn = (content: string): Tree[] | undefined => {
+		if (rendered.size === 0 || !content.includes("<")) return undefined;
+		const kids: Tree[] = [];
+		for (let i = 0; ;) {
+			while (i < content.length && /\s/.test(content[i])) i++;
+			if (i >= content.length) break;
+			let best: [string, Tree] | undefined;
+			for (const pair of rendered) if (pair[0].length > (best?.[0].length ?? 0) && content.startsWith(pair[0], i)) best = pair;
+			if (!best) return undefined;
+			kids.push(best[1]);
+			i += best[0].length;
+		}
+		return kids.length ? kids : undefined;
+	};
+
 	config.componentRenderers.push((name, value, inputPath, data) => {
-		if (!render) return undefined;
+		if (!server) return undefined;
 		const own = byPage.get(path.resolve(inputPath)) ?? {};
 		const entry = own[name] ?? globalEntries[name];
 		const page = shownFile(path.resolve(inputPath));
@@ -444,22 +492,31 @@ BUILTINS.set("ssqch/react", (config: Config, given) => {
 			throw new BuildError(message, [error("template", message, at.extra)]);
 		}
 		// Props as JSX has them: attributes by the names written (`aria-label`, not also `ariaLabel`),
-		// `class` as React's `className`, and a value that's a JSX expression (`{500}`) read as one.
+		// and `class` as React's `className`.
 		const props: Record<string, unknown> = {};
 		for (const [k, v] of Object.entries(value.props)) {
 			if (/^[a-z][\w]*[A-Z]/.test(k) && Object.keys(value.props).some((w) => w.includes("-") && w.replace(/-([a-z0-9])/g, (_, c: string) => c.toUpperCase()) === k)) continue;
-			props[k] = typeof v === "string" && /^\{[\s\S]*\}$/.test(v) ? bindingValue(v.slice(1, -1), data) : v;
+			props[k] = v;
 		}
 		if ("class" in props && !("className" in props)) { props.className = props.class; delete props.class; }
 		const when = hydrateFor(name);
 		const content = value.content;
+		// A new page: what the last one rendered can't be its children.
+		const pageKey = `${inputPath}\0${url}`;
+		if (pageKey !== renderedFor) { rendered = new Map(); renderedFor = pageKey; }
 		let html: string;
+		let tree: Tree | undefined;
 		try {
 			if (when === false) {
-				html = render(entry.id, content === "" ? props : { ...props, children: SLOT }, undefined);
-				html = html.split(SLOT).join(content);
+				// Children that are only components (`<Tabs>` around `<TabItem>`s) are React elements, as
+				// MDX gives them, so a parent can read their props; anything else is its HTML.
+				const kids = componentsIn(content);
+				tree = kids ? { id: entry.id, props, kids } : { id: entry.id, props, content };
+				const slots: string[] = [];
+				const plain = (t: Tree): unknown => ({ id: t.id, props: t.props, kids: t.kids?.map(plain), slot: t.kids || !t.content ? undefined : `\uE052${slots.push(t.content) - 1}\uE053` });
+				html = server.render(plain(tree)).replace(SLOTS, (_, n: string) => slots[Number(n)]);
 			} else {
-				html = render(entry.id, props, content === "" ? undefined : content);
+				html = server.island(entry.id, props, content === "" ? undefined : content);
 			}
 		} catch (e) {
 			const at = where();
@@ -467,6 +524,7 @@ BUILTINS.set("ssqch/react", (config: Config, given) => {
 			const message = `reactPlugin(): <${name}> (${shownFile(entry.file)}) at ${at.text} didn't render: ${cause}`;
 			throw new BuildError(message, [error("template", message, at.extra)]);
 		}
+		if (tree && html !== "") rendered.set(html, tree);
 		if (when === false) return html;
 		islands = true;
 		const json = JSON.stringify(props, (_, v) => (v instanceof Date ? v.toISOString() : v)) ?? "{}";
@@ -483,7 +541,7 @@ BUILTINS.set("ssqch/react", (config: Config, given) => {
 	// The components' styles, what they import (pictures, fonts), and the browser's modules.
 	config.generators.push(["ssqch/react", () => {
 		const files: GeneratedFile[] = [];
-		if (!render) return files;
+		if (!server) return files;
 		const listed = (dir: string) => (fs.existsSync(dir) ? fs.readdirSync(dir, { recursive: true }).map(String).filter((f) => fs.statSync(path.join(dir, f)).isFile()).sort() : []);
 		const ssrDir = path.join(cache, "ssr");
 		for (const f of listed(ssrDir)) {

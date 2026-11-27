@@ -8,10 +8,10 @@ test("a_pages_imports_name_its_components", () => {
 	const page = "import Counter from \"./Counter.jsx\"\nimport { Tabs, TabItem as Tab, useThing } from '../tabs.tsx';\nimport {\n  Trail,\n} from \"@site/src/trail.jsx\"\nimport data from \"./data.json\"\n\n# Trail\n\n```js\nimport Not from \"./No.jsx\"\n```\n";
 	const found = pageImports(page);
 	assert.deepEqual(found.components, {
-		Counter: { spec: "./Counter.jsx", export: "default" },
-		Tabs: { spec: "../tabs.tsx", export: "Tabs" },
-		Tab: { spec: "../tabs.tsx", export: "TabItem" },
-		Trail: { spec: "@site/src/trail.jsx", export: "Trail" },
+		Counter: { spec: "./Counter.jsx", export: "default", line: 0 },
+		Tabs: { spec: "../tabs.tsx", export: "Tabs", line: 1 },
+		Tab: { spec: "../tabs.tsx", export: "TabItem", line: 1 },
+		Trail: { spec: "@site/src/trail.jsx", export: "Trail", line: 2 },
 	});
 	// A lower-case import (data, a hook) isn't a tag, so its line stays.
 	assert.deepEqual([...found.lines].sort(), [0, 1, 2, 3, 4]);
