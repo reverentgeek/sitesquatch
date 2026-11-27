@@ -88,7 +88,7 @@ test("scout_moves_an_eleventy_site", () => {
 	// A second run is a progress check: the draft is there, and nothing's left to edit.
 	r = ssqch(["scout", d]);
 	// DELIBERATE (0.16.2): the config's own file name, where it said "an ssqch.config.js" for a
-	// `.mjs` one too (redux.js.org's and victorzhou.com's moves).
+	// `.mjs` one too (redux.js.org's and a Gatsby blog's moves).
 	assert.ok(r.ok && r.log.includes(": a move under way, with ssqch.config.js\n") && r.log.includes("Draft (0 to write, 1 there already)") && r.log.includes("  ssqch.config.js (a first draft, from .eleventy.js) [there already]\n") && !r.log.includes("Edits ("), r.log);
 	// A folder with no generator's files, or two generators', asks for --from.
 	const empty = tempDir("scout-empty");
@@ -97,7 +97,7 @@ test("scout_moves_an_eleventy_site", () => {
 	write(empty, { "mkdocs.yml": "site_name: Trail\n", "_config.yml": "title: Trail\n" });
 	r = ssqch(["scout", empty]);
 	assert.ok(!r.ok && r.log.includes("more than one generator's files are in ") && r.log.includes("(MkDocs: mkdocs.yml; Jekyll: _config.yml): choose with --from"), r.log);
-	// DELIBERATE (0.16.2): Gatsby and Next.js are read lightly, as Astro is (victorzhou.com's move:
+	// DELIBERATE (0.16.2): Gatsby and Next.js are read lightly, as Astro is (a Gatsby blog's move:
 	// `ssqch build` sent it to scout, which refused Gatsby).
 	r = ssqch(["scout", empty, "--from", "pelican"]);
 	assert.ok(!r.ok && r.log.includes("pelican: not a generator scout knows"), r.log);

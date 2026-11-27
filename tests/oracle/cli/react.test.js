@@ -1,4 +1,4 @@
-// Added in 0.17: `reactPlugin()` from "ssqch/react" renders a site's React components with the
+// Added in 0.16.2: `reactPlugin()` from "ssqch/react" renders a site's React components with the
 // site's own React, react-dom and esbuild. The repository doesn't install them, so the tests that
 // render need a folder that has them: SSQCH_REACT_MODULES, a `node_modules` with react, react-dom
 // and esbuild (`npm install --prefix <dir> react react-dom esbuild`, then `<dir>/node_modules`).

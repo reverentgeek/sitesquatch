@@ -3,6 +3,9 @@ title: "Trailhead: moving from Hexo"
 navTitle: "From Hexo"
 description: "Hexo sites are Markdown posts, a theme of templates (often Nunjucks, sometimes EJS or Pug) and tag plugins inside the posts."
 ---
+> [!NOTE]
+> **Not released yet.** Dates with slashes, the theme's languages and `scripts/` in `ssqch scout`, and a global `page`'s warning ship with the next version of ssqch; the recipes work today.
+
 Hexo sites are Markdown posts, a theme of templates (often Nunjucks, sometimes EJS or Pug) and tag plugins inside the posts. A Nunjucks theme carries over with a few changes (below: `body`, `partial()`, `page` and escaping), posts keep their front matter, and tag plugins become filters called with quoted arguments. What takes work is the theme's helpers, the site's own `scripts/`, and anything that leans on Hexo's `site` object. `ssqch scout` lists each of them in a Hexo site, with counts.
 
 The [`docs-sidebar`](https://github.com/reverentgeek/sitesquatch/tree/main/examples/sites/docs-sidebar/) example is distilled from hexo.io (and the FastAPI docs), and [`blog-tags`](https://github.com/reverentgeek/sitesquatch/tree/main/examples/sites/blog-tags/) shows a blog with tag pages and feeds.
@@ -37,9 +40,19 @@ The [`docs-sidebar`](https://github.com/reverentgeek/sitesquatch/tree/main/examp
 | `pretty_urls: { trailing_html: false }` | `urls: "html"` writes `docs/setup.html` as Hexo does; links written without `.html` (`/docs/setup`) are the host's to serve (Netlify and Cloudflare do) |
 | `per_page: 0` | One archive page: pagination with `size` the collection's length |
 | `hexo server`, `hexo generate` | `ssqch serve`, `ssqch build` (`ssqch server` and `ssqch generate` work too) |
-| Heading ids (`#Join-us`, case kept) | `` headingIds: (text) => text.replace(/[\s~`!@#$%^&*()\-_+=[\]{}\|\\;:"'<>,.?/]+/g, "-").replace(/^-+\|-+$/g, "") ``, hexo-util's `slugize` |
+| Heading ids (`#Join-us`, case kept) | `headingIds` with hexo-util's `slugize`: [Hexo's heading ids](#hexos-heading-ids), below |
 | highlight.js's classes (`<span class="keyword">`) | `markdown: { highlight: { css: false, classes: { keyword: "keyword", string: "string", comment: "comment" } } }`, and a `fence` render hook for Hexo's `<figure class="highlight">` |
 | `sitemap.txt`, or another file a generator writes | A template with that `permalink` (`permalink: /sitemap.txt`) that loops over `collections.all` |
+
+### Hexo's heading ids
+
+Hexo's ids keep a heading's case and turn each run of punctuation and spaces into one dash (`Join us!` is `#Join-us`), as hexo-util's `slugize` does:
+
+```js
+markdown: {
+  headingIds: (text) => text.replace(/[\s~`!@#$%^&*()\-_+=[\]{}|\\;:"'<>,.?/]+/g, "-").replace(/^-+|-+$/g, ""),
+},
+```
 
 ## Posts and pages
 

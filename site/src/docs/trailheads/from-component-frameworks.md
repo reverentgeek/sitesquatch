@@ -4,6 +4,9 @@ navTitle: "From Astro, Next.js, Gatsby"
 description: "These are component frameworks."
 command: "ssqch docs --from astro"
 ---
+> [!NOTE]
+> **Not released yet.** `reactPlugin()`, `markdown.math`, `ssqch scout` for Gatsby and Next.js, and images found in `static/` ship with the next version of ssqch.
+
 These are component frameworks: a page is a tree of components, rendered on a server or at build time and, for some of them, run again in the browser. ssqch is a template-and-Markdown generator that ships HTML and only the JavaScript you write. So this move isn't a port of the framework. It's a sort of what you have into three piles:
 
 1. **Content** (Markdown, front matter, data files): moves as it is.
@@ -135,6 +138,6 @@ Build both and compare the output:
 ssqch diff dist-old dist --ignore 'data-astro-[\w-]+(="[^"]*")?' --ignore '<!--\[?-->'
 ```
 
-For Gatsby, its own markup: `--ignore ' data-react-helmet="true"' --ignore ' id="gatsby-[\w-]+"' --ignore '<style data-href="[^"]*">'`, and `ssqch diff --text` to compare the words while the markup is a different theme's.
+For Gatsby, its own markup: `--ignore ' data-react-helmet="true"' --ignore ' id="gatsby-[\w-]+"' --ignore '<style data-href="[^"]*"[^>]*>'` (each checked on a Gatsby 5 build), and `ssqch diff --text` to compare the words while the markup is a different theme's.
 
 `ssqch diff` compares tags and text, so framework noise shows up as markup-only differences: scoped-style attributes, hydration markers, inlined state. `--ignore` takes patterns for those. What's left is what a visitor would notice: the text of each page, its headings and ids, and its links.

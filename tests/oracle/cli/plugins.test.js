@@ -1419,7 +1419,7 @@ test("llms_txt_for_a_part_of_the_site_and_an_optional_section", () => {
 	}
 });
 
-// Found moving victorzhou.com (2026-11-27, I1): Gatsby, Hugo and Docusaurus keep a site's pictures
+// Found moving a Gatsby blog (2026-11-27, I1): Gatsby, Hugo and Docusaurus keep a site's pictures
 // in `static/`, which `passthrough` publishes at `/`, and imagePlugin() said "image not found" for
 // each one the build had just published. A picture is found there by its URL too, and one that
 // isn't anywhere says every place it was looked for.

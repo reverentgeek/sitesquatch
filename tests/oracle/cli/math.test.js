@@ -1,4 +1,4 @@
-// `markdown.math` (0.17): TeX kept as written for a script in the page, or rendered with the
+// `markdown.math` (0.16.2): TeX kept as written for a script in the page, or rendered with the
 // site's own KaTeX at build time. Not in 0.7, so these are 0.8's; the frozen sites (math off)
 // prove that a site without it is byte for byte as it was.
 import { test } from "node:test";

@@ -178,7 +178,7 @@ export function detect(dir: string): Array<[string, string]> {
 	if (astro) found.push(["astro", astro]);
 	if (has(".vitepress") || has("docs/.vitepress")) found.push(["vitepress", has(".vitepress") ? ".vitepress" : "docs/.vitepress"]);
 	// Gatsby and Next.js: the trailhead for component frameworks covers them, and `ssqch build` in
-	// their folder sent people here, where scout refused them (victorzhou.com's move, 2026-11-27).
+	// their folder sent people here, where scout refused them (a Gatsby blog's move, 2026-11-27).
 	const gatsby = ["gatsby-config.js", "gatsby-config.ts", "gatsby-config.mjs"].find(has);
 	if (gatsby) found.push(["gatsby", gatsby]);
 	else if (deps.has("gatsby")) found.push(["gatsby", "package.json (gatsby)"]);
@@ -3480,7 +3480,7 @@ export function other(dir: string, id: string): Plan {
 		const mdx = pages.filter((e) => e.name.endsWith(".mdx"));
 		if (mdx.length) plan.byHand.push([mdx[0].rel, `${mdx.length} MDX ${mdx.length === 1 ? "page" : "pages"}: as \`.md\` pages, \`reactPlugin()\` from "ssqch/react" renders the components they import with the site's own React; MDX's expressions and \`export\`s need the site's \`@mdx-js/mdx\` as an engine (\`ssqch docs --from docusaurus\`)`, { code: "docusaurus-mdx", status: "site", files: mdx.length }]);
 		listSyntax(plan, pages, [
-			["`import` of components in pages", /^import\s+[\w{},\s*]+\s+from\s+['"][^'"]+['"];?\s*$/m, "`reactPlugin()` from \"ssqch/react\" reads them as they're written, in a `.md` page (`@theme/` and `@site/` through its `esbuild.alias`)", "docusaurus-imports", "ssqch"],
+			["`import` of components in pages", /^import\s+[\w{},\s*]+\s+from\s+['"][^'"]+['"];?\s*$/m, "the site's own components: `reactPlugin()` from \"ssqch/react\" reads them as they're written, in a `.md` page (`@site/` through its `esbuild.alias`, and a stand-in for each `@docusaurus/` module they import); Docusaurus's own `@theme/` components don't run outside it, and become containers (`ssqch docs --from docusaurus`)", "docusaurus-imports", "site"],
 			["`<Tabs>` and `<TabItem>`", /<Tabs\b/, "tabs from containers (the versioned-docs example has them)", "docusaurus-tabs", "ssqch"],
 			["admonitions (`:::note`)", /^:::(?:note|tip|info|warning|danger|caution)\b/m, "containers, built in: `_includes/containers/note.*` gives each its markup", "docusaurus-admonitions", "ssqch"],
 			["`<!-- truncate -->` and `{/* truncate */}`", /<!--\s*truncate\s*-->|\{\/\*\s*truncate\s*\*\/\}/, "an excerpt's end: ssqch's marker is `<!-- more -->`", "docusaurus-truncate", "not-yet"],

@@ -621,7 +621,7 @@ export class ImageProcessor {
 		const output = path.resolve(root, config.output);
 		// The folders `passthrough` copies, where they land as site paths (`passthroughCopy` in
 		// build.ts): Hugo's, Gatsby's and Docusaurus's `static/` keep a site's pictures outside the
-		// input, and victorzhou.com's `/media/...` were "not found" though the build published them.
+		// input, and a Gatsby blog's `/media/...` were "not found" though the build published them.
 		const copied: Array<[string, string]> = [];
 		for (const { from, to } of config.passthrough ?? []) {
 			if (/[*?[{]/.test(from)) continue;

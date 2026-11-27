@@ -276,6 +276,16 @@ export class Site {
 	private gitChanged = new Set<string>();
 	/** The folders git gave no dates for, by their real paths, and why (not a repository, no commits). */
 	private gitLost = new Map<string, string>();
+	/** Each folder's real path, once a build: a page's real path is its folder's and its own name. */
+	private realDirs = new Map<string, string>();
+
+	/** A page's file by its real path, as git names it: through its folder's, resolved once for all the files in it. */
+	private realFile(file: string): string {
+		const dir = path.dirname(file);
+		let real = this.realDirs.get(dir);
+		if (real === undefined) { real = realPath(dir); this.realDirs.set(dir, real); }
+		return path.join(real, path.basename(file));
+	}
 	/** The files git has more than one commit for: their last commit changed them after they were added, which `page.updated` takes as an update. */
 	private gitRevised = new Set<string>();
 	private caseBlind: boolean | undefined;
@@ -689,6 +699,7 @@ export class Site {
 		this.gitLost.clear();
 		this.gitChanged.clear();
 		this.gitRevised.clear();
+		this.realDirs.clear();
 		const git = (cwd: string, ...args: string[]) => spawnSync("git", ["-C", cwd, "-c", "core.quotepath=off", ...args], { encoding: "utf8", maxBuffer: 1 << 30 });
 		const dates = new Map<string, Date>();
 		const revised = new Set<string>();
@@ -696,7 +707,7 @@ export class Site {
 		// Where the pages are, as real paths: the project, and the folders of pages outside it (the
 		// redux.js.org move's docs were `../docs`, read through links, and got no dates at all).
 		const root = realPath(dirs.root);
-		const outside = [...new Set(this.files.map((file) => path.dirname(realPath(file))).filter((dir) => !isInside(root, dir)))].sort(compareText);
+		const outside = [...new Set(this.files.map((file) => path.dirname(this.realFile(file))).filter((dir) => !isInside(root, dir)))].sort(compareText);
 		const areas = [root];
 		for (const dir of outside) if (!areas.some((area) => isInside(area, dir))) areas.push(dir);
 		// Each area's repository: one `rev-parse` for an area no repository found so far holds.
@@ -845,7 +856,7 @@ export class Site {
 	}
 
 	private async loadTemplate(file: string, source: Buffer, dirData: Map<string, Data>, commitDates: Map<string, Date>): Promise<Tpl> {
-		const commit = commitDates.size > 0 ? commitDates.get(realPath(file))?.getTime() : undefined;
+		const commit = commitDates.size > 0 ? commitDates.get(this.realFile(file))?.getTime() : undefined;
 		const kept = this.shared !== undefined ? keptTemplates.get(file) : undefined;
 		// The same bytes, as `keptSources` kept them or read again with nothing different (a file in
 		// a folder Windows named): nothing in it changed, unless its date is its file's time and that moved.
@@ -1026,7 +1037,7 @@ export class Site {
 			const stat = fs.statSync(file, { bigint: true });
 			const mtime = new Date(Number(stat.mtimeMs));
 			// Git's dates are by real path: a page in a linked folder is its target's file.
-			const real = commitDates.size > 0 || this.gitChanged.size > 0 ? realPath(file) : file;
+			const real = commitDates.size > 0 || this.gitChanged.size > 0 ? this.realFile(file) : file;
 			return {
 				layers,
 				frontKeys,
