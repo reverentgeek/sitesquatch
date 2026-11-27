@@ -102,6 +102,10 @@ test("a formula's line is its first line's in the page", () => {
 	assert.equal(lineOf("a\n\n$$\n\\frac{a}{b}\n$$\n", "\n\\frac{a}{b}\n"), 4);
 	assert.equal(lineOf("one $x$\n", "x"), 1);
 	assert.equal(lineOf("one\n", "y"), undefined);
+	// The formula, not the same text earlier in the page.
+	assert.equal(lineOf("Snacks & more, `x_1`.\n\nThen $&$ and $x_1$.\n", "&"), 3);
+	assert.equal(lineOf("x_1 is it.\n\nThen $x_1$.\n", "x_1"), 3);
+	assert.equal(lineOf("> quote\n> $$\n> \\fraq\n> $$\n", "\n\\fraq\n"), 3);
 });
 
 test("a feed gets KaTeX's MathML alone", () => {

@@ -96,7 +96,10 @@ export function mathmlOnly(html: string): string {
 export function lineOf(source: string, tex: string): number | undefined {
 	const first = tex.split("\n").map((line) => line.trim()).find((line) => line !== "");
 	if (first === undefined) return undefined;
-	const at = source.indexOf(first);
+	// The occurrence that a `$` opens (spaces, a line's end or a quote's `>` between them), not the
+	// same text written earlier in prose or code: `$&$` after a sentence with an `&` in it.
+	let at = source.indexOf(first);
+	while (at !== -1 && !/\$[ \t]*(?:\r?\n[ \t>]*)?$/.test(source.slice(Math.max(0, at - 64), at))) at = source.indexOf(first, at + 1);
 	if (at === -1) return undefined;
 	let line = 1;
 	for (let i = source.indexOf("\n"); i !== -1 && i < at; i = source.indexOf("\n", i + 1)) line++;

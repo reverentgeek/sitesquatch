@@ -53,6 +53,20 @@ test("markdown_math_keeps_tex_for_a_script_in_the_page", () => {
 	assert.ok(read(dir, "dist/index.md").includes("$$\n\\begin{cases} a \\\\ b \\end{cases}\n$$"), read(dir, "dist/index.md"));
 });
 
+test("markdown_math_and_template_code", () => {
+	const dir = site("{ math: true }");
+	// Jinja runs first: `{{a}}` is an undefined variable, printed as nothing. A space between the
+	// braces (TeX ignores it) or `{% raw %}` keeps the formula as written, as the docs say.
+	write(dir, { "src/index.md": "Lost $\\frac{{a}}{b}$, kept $\\frac{ {a} }{b}$ and {% raw %}$\\frac{{a}}{b}$ and $\\{#1\\}${% endraw %}.\n" });
+	let r = ssqch(["build", "--root", dir, "-q"]);
+	assert.ok(r.ok, r.log);
+	assert.equal(read(dir, "dist/index.html"), "<p>Lost <span class=\"math math-inline\">\\(\\frac{b}\\)</span>, kept <span class=\"math math-inline\">\\(\\frac{ {a} }{b}\\)</span> and <span class=\"math math-inline\">\\(\\frac{{a}}{b}\\)</span> and <span class=\"math math-inline\">\\(\\{#1\\}\\)</span>.</p>\n");
+	// `{%` is a template error on the formula's line.
+	write(dir, { "src/index.md": "---\ntitle: T\n---\nOne.\n\nThen $\\{%a\\}$.\n" });
+	r = ssqch(["build", "--root", dir, "-q"]);
+	assert.ok(!r.ok && r.log.includes("unknown statement a") && r.log.includes("src/index.md:6"), r.log);
+});
+
 test("markdown_math_is_off_by_default", () => {
 	const dir = site("{}");
 	const r = ssqch(["build", "--root", dir, "-q"]);

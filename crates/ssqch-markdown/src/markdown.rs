@@ -564,7 +564,7 @@ fn not_math<'a>(event: Event<'a>, after: &str) -> Event<'a> {
 
 /// A formula's markup, which KaTeX's auto-render and MathJax read as they come, with their
 /// default delimiters: `\(...\)` inline and `\[...\]` for display, inside an element with
-/// remark-math's and pulldown-cmark's classes (`math math-inline`, `math math-display`), which
+/// pulldown-cmark's classes (`math math-inline`, `math math-display`), which
 /// Node finds to render it with KaTeX at build time (`math: { render: "katex" }`). The TeX is as
 /// written, only escaped for HTML.
 fn math_html(tex: &str, display: bool, element: &str) -> String {
@@ -1671,6 +1671,9 @@ mod tests {
         // `\$` is a dollar sign, in text and in TeX.
         assert_eq!(math("A \\$5 snack, $\\$5$\n"), "<p>A $5 snack, <span class=\"math math-inline\">\\(\\$5\\)</span></p>\n");
         assert_eq!(math("One $ alone.\n"), "<p>One $ alone.</p>\n");
+        // A price and a formula in one paragraph.
+        assert_eq!(math("It costs $5 and $x$ cones.\n"), "<p>It costs $5 and <span class=\"math math-inline\">\\(x\\)</span> cones.</p>\n");
+        assert_eq!(math("Pay $5, get $n^2$ snacks, or $10.\n"), "<p>Pay $5, get <span class=\"math math-inline\">\\(n^2\\)</span> snacks, or $10.</p>\n");
     }
 
     #[test]
