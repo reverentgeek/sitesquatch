@@ -103,6 +103,8 @@ declare module "ssqch" {
 		/** Links to `.md` files (`[Setup](setup/install.md#first)`) go to the page built from that file, with the `#` part: `true` writes its URL from the site's root (`/setup/install/#first`), `"relative"` from the page, as MkDocs does (`setup/install/#first`). A link to a file that isn't a page stays as written, for the link checker. Default `false`. */
 		sourceLinks?: boolean | "relative";
 		highlight?: boolean | { css?: string | false; languages?: Record<string, Highlighter>; classes?: "prism" | "pygments" | "chroma" | Partial<Record<TokenKind, string>> };
+		/** TeX math: `$x^2$` inline and `$$...$$` for display are kept as written (not read as Markdown), in `<span class="math math-inline">\(x^2\)</span>` and `<div class="math math-display">\[...\]</div>`, which KaTeX's auto-render and MathJax render in the browser. A `$` before a space or a closing `$` after one or before a digit isn't math (`$5 and $10`, `$20-$30`), and `\$` is a dollar sign. `{ render: "katex" }` renders each formula while the site builds, with the site's own `katex` package (`npm install -D katex`; the page still needs KaTeX's stylesheet), and `katex` passes KaTeX's options (`{ macros: { "\\RR": "\\mathbb{R}" } }`). A formula KaTeX refuses is an error with its page and line. Default `false`. */
+		math?: boolean | { render?: "katex" | false; katex?: Record<string, unknown> };
 	}
 
 	/** What a collection function gets. */

@@ -267,6 +267,9 @@ pub struct MarkdownOptions {
     /// A slugger of the site's own (`headingIds: text => id`), used instead
     /// of `heading_ids` when set. Repeats still get `-1`, `-2`.
     pub slugger_fn: Option<Value>,
+    /// TeX between `$` and `$$` is math, kept as written for KaTeX or MathJax (`math: true`).
+    /// Off, a `$` is text, as it always was.
+    pub math: bool,
 }
 
 impl Default for MarkdownOptions {
@@ -292,6 +295,7 @@ impl Default for MarkdownOptions {
             languages: Languages::default(),
             highlight_classes: None,
             slugger_fn: None,
+            math: false,
         }
     }
 }
@@ -392,6 +396,7 @@ impl MarkdownOptions {
             (self.alerts, Options::ENABLE_GFM),
             (self.definition_lists, Options::ENABLE_DEFINITION_LIST),
             (self.smart_punctuation, Options::ENABLE_SMART_PUNCTUATION),
+            (self.math, Options::ENABLE_MATH),
         ] {
             if on {
                 o |= flag;
@@ -496,12 +501,17 @@ pub fn render_current(source: &str, inline: bool) -> Result<String> {
 pub fn render(source: &str, opts: &MarkdownOptions, hooks: Option<&dyn Hooks>) -> Result<String> {
     let mut containers = Vec::new();
     let source = if opts.containers { mark_containers(source, &mut containers, opts.markdown_it_containers) } else { Cow::Borrowed(source) };
-    let mut events: Vec<Event> = TextMergeStream::new(Parser::new_ext(&source, opts.parser_options()))
-        .map(|e| match e {
-            Event::Start(Tag::Subscript) | Event::End(TagEnd::Subscript) => Event::Text("~".into()),
-            other => other,
-        })
-        .collect();
+    let tilde = |e| match e {
+        Event::Start(Tag::Subscript) | Event::End(TagEnd::Subscript) => Event::Text("~".into()),
+        other => other,
+    };
+    let mut events: Vec<Event> = if opts.math {
+        // Math needs where each formula ends in the source (`not_math`), so only a site with it on
+        // reads the offsets; every other page is parsed as it always was.
+        TextMergeStream::new(Parser::new_ext(&source, opts.parser_options()).into_offset_iter().map(|(e, at)| not_math(e, &source[at.end..]))).map(tilde).collect()
+    } else {
+        TextMergeStream::new(Parser::new_ext(&source, opts.parser_options())).map(tilde).collect()
+    };
     if opts.smart_punctuation {
         keep_flags(&mut events);
         close_open_quotes(&mut events);
@@ -539,6 +549,33 @@ pub fn render(source: &str, opts: &MarkdownOptions, hooks: Option<&dyn Hooks>) -
     w.write(&events, &mut out)?;
     w.write_footnotes(&mut out)?;
     Ok(out)
+}
+
+/// Prices aren't math: `$20-$30` closes a formula `20-` for pulldown-cmark, which follows
+/// GitHub's rules, so a closing `$` followed by a digit doesn't close one here, as pandoc's
+/// `tex_math_dollars` and markdown-it-katex read it. The text goes back as it was written (its
+/// content is the source's, so nothing inside it was read as Markdown).
+fn not_math<'a>(event: Event<'a>, after: &str) -> Event<'a> {
+    match event {
+        Event::InlineMath(tex) if after.starts_with(|c: char| c.is_ascii_digit()) => Event::Text(format!("${}$", tex).into()),
+        other => other,
+    }
+}
+
+/// A formula's markup, which KaTeX's auto-render and MathJax read as they come, with their
+/// default delimiters: `\(...\)` inline and `\[...\]` for display, inside an element with
+/// remark-math's and pulldown-cmark's classes (`math math-inline`, `math math-display`), which
+/// Node finds to render it with KaTeX at build time (`math: { render: "katex" }`). The TeX is as
+/// written, only escaped for HTML.
+fn math_html(tex: &str, display: bool, element: &str) -> String {
+    let (kind, open, close) = if display { ("display", "\\[", "\\]") } else { ("inline", "\\(", "\\)") };
+    let mut out = format!("<{} class=\"math math-{}\">{}", element, kind, open);
+    escape_html(&mut out, tex).ok();
+    out.push_str(close);
+    out.push_str("</");
+    out.push_str(element);
+    out.push('>');
+    out
 }
 
 /// A link's or image's title for its hook: null when it has none, so `{% if link.title %}` is
@@ -583,7 +620,7 @@ fn close_open_quotes(events: &mut [Event]) {
                 open = 0;
                 last = None;
             }
-            Event::Code(code) => last = code.chars().last(),
+            Event::Code(code) | Event::InlineMath(code) | Event::DisplayMath(code) => last = code.chars().last().or(last),
             Event::SoftBreak | Event::HardBreak => last = Some(' '),
             Event::Text(text) => {
                 if !text.contains(['\u{201C}', '\u{201D}']) {
@@ -707,7 +744,7 @@ fn plain_text(events: &[Event]) -> String {
     let mut s = String::new();
     for e in events {
         match e {
-            Event::Text(t) | Event::Code(t) => s.push_str(t),
+            Event::Text(t) | Event::Code(t) | Event::InlineMath(t) | Event::DisplayMath(t) => s.push_str(t),
             Event::SoftBreak | Event::HardBreak => s.push(' '),
             _ => {}
         }
@@ -1069,7 +1106,7 @@ impl Writer<'_, '_> {
                     let alt: String = events[i + 1..end]
                         .iter()
                         .map(|e| match e {
-                            Event::Text(t) | Event::Code(t) => t.as_ref(),
+                            Event::Text(t) | Event::Code(t) | Event::InlineMath(t) | Event::DisplayMath(t) => t.as_ref(),
                             Event::SoftBreak | Event::HardBreak => "\n",
                             _ => "",
                         })
@@ -1268,6 +1305,16 @@ impl Writer<'_, '_> {
                     out.push_str(self.hook("hooks/code", "code", Value::from_pairs([("code", Value::from(t.as_ref()))]))?.trim_end());
                 }
                 Event::Code(t) if t.contains('"') => plain.push(Event::InlineHtml(format!("<code>{}</code>", escape_text(t)).into())),
+                // A display formula that's a paragraph of its own (`$$` on their own lines) is a
+                // `<div>`, without the `<p>`, which can't hold one; inside a line it's a `<span>`.
+                Event::Start(Tag::Paragraph) if matches!((events.get(i + 1), events.get(i + 2)), (Some(Event::DisplayMath(_)), Some(Event::End(TagEnd::Paragraph)))) => {
+                    let Some(Event::DisplayMath(tex)) = events.get(i + 1) else { unreachable!() };
+                    plain.push(Event::Html(format!("{}\n", math_html(tex, true, "div")).into()));
+                    i += 3;
+                    continue;
+                }
+                Event::InlineMath(tex) => plain.push(Event::InlineHtml(math_html(tex, false, "span").into())),
+                Event::DisplayMath(tex) => plain.push(Event::InlineHtml(math_html(tex, true, "span").into())),
                 other => plain.push(other.clone()),
             }
             i += 1;
@@ -1590,6 +1637,61 @@ mod tests {
 
     fn md(src: &str) -> String {
         render(src, &MarkdownOptions::default(), None).unwrap()
+    }
+
+    fn math(src: &str) -> String {
+        render(src, &MarkdownOptions { math: true, ..Default::default() }, None).unwrap()
+    }
+
+    #[test]
+    fn math_is_off_unless_asked_for() {
+        // Off, TeX is CommonMark, as it always was: what `math: true` is for.
+        assert_eq!(md("$a*b*c$ and $\\{x\\}$\n"), "<p>$a<em>b</em>c$ and ${x}$</p>\n");
+    }
+
+    #[test]
+    fn math_keeps_tex_as_written() {
+        assert_eq!(math("$a*b*c$ and $\\{x\\}$ and $a<b$ & $x_1 = y_2$\n"), "<p><span class=\"math math-inline\">\\(a*b*c\\)</span> and <span class=\"math math-inline\">\\(\\{x\\}\\)</span> and <span class=\"math math-inline\">\\(a&lt;b\\)</span> &amp; <span class=\"math math-inline\">\\(x_1 = y_2\\)</span></p>\n");
+        // `$$` on lines of their own is a block of its own, the `<p>` left out.
+        assert_eq!(math("$$\n\\begin{cases} a \\\\ b \\end{cases}\n$$\n"), "<div class=\"math math-display\">\\[\n\\begin{cases} a \\\\ b \\end{cases}\n\\]</div>\n");
+        assert_eq!(math("$$x^2$$\n"), "<div class=\"math math-display\">\\[x^2\\]</div>\n");
+        // Inside a line, a display formula is a `<span>` (a `<p>` can't hold a `<div>`).
+        assert_eq!(math("So $$x = 1$$ holds.\n"), "<p>So <span class=\"math math-display\">\\[x = 1\\]</span> holds.</p>\n");
+        assert_eq!(math("$$\na &= b\n$$\n"), "<div class=\"math math-display\">\\[\na &amp;= b\n\\]</div>\n");
+    }
+
+    #[test]
+    fn dollars_in_prose_stay_text() {
+        // An opening `$` before a space, or a closing one after a space, isn't math.
+        assert_eq!(math("It costs $5 and $10.\n"), "<p>It costs $5 and $10.</p>\n");
+        assert_eq!(math("$ x$ and $x $\n"), "<p>$ x$ and $x $</p>\n");
+        // A closing `$` before a digit isn't one either: prices, as pandoc reads them.
+        assert_eq!(math("From $20-$30, or $5/$10.\n"), "<p>From $20-$30, or $5/$10.</p>\n");
+        assert_eq!(math("From $20-$30 to $x$.\n"), "<p>From $20-$30 to <span class=\"math math-inline\">\\(x\\)</span>.</p>\n");
+        // `\$` is a dollar sign, in text and in TeX.
+        assert_eq!(math("A \\$5 snack, $\\$5$\n"), "<p>A $5 snack, <span class=\"math math-inline\">\\(\\$5\\)</span></p>\n");
+        assert_eq!(math("One $ alone.\n"), "<p>One $ alone.</p>\n");
+    }
+
+    #[test]
+    fn math_isnt_in_code() {
+        assert_eq!(math("`$x$` and\n\n```\n$$y$$\n```\n"), "<p><code>$x$</code> and</p>\n<pre><code>$$y$$\n</code></pre>\n");
+    }
+
+    #[test]
+    fn math_in_other_markdown() {
+        assert_eq!(math("## The $\\alpha$ case\n"), "<h2 id=\"the-alpha-case\">The <span class=\"math math-inline\">\\(\\alpha\\)</span> case</h2>\n");
+        assert_eq!(math("- $a$\n- $$\n  b\n  $$\n"), "<ul>\n<li><span class=\"math math-inline\">\\(a\\)</span></li>\n<li><span class=\"math math-display\">\\[\nb\n\\]</span></li>\n</ul>\n");
+        assert_eq!(math("> $$\n> x\n> $$\n"), "<blockquote>\n<div class=\"math math-display\">\\[\nx\n\\]</div>\n</blockquote>\n");
+        assert_eq!(math("| a | b |\n| - | - |\n| $x^2$ | $\\vert y \\vert$ |\n"), "<table><thead><tr><th>a</th><th>b</th></tr></thead><tbody>\n<tr><td><span class=\"math math-inline\">\\(x^2\\)</span></td><td><span class=\"math math-inline\">\\(\\vert y \\vert\\)</span></td></tr>\n</tbody></table>\n");
+        // A `|` in a table's formula ends its cell, as on GitHub: `\vert` is the bar.
+        assert!(math("| a |\n| - |\n| $|x|$ |\n").contains("<td>$</td>"));
+        assert_eq!(math("Note.[^1]\n\n[^1]: Where $x$ is.\n"), "<p>Note.<sup class=\"footnote-ref\"><a href=\"#fn-1\" id=\"fnref-1\">1</a></sup></p>\n<section class=\"footnotes\">\n<ol>\n<li id=\"fn-1\">\n<p>Where <span class=\"math math-inline\">\\(x\\)</span> is. <a href=\"#fnref-1\" class=\"footnote-backref\" aria-label=\"Back to reference 1\">↩</a></p>\n</li>\n</ol>\n</section>\n");
+        let breaks = MarkdownOptions { math: true, breaks: true, ..Default::default() };
+        assert_eq!(render("$a +\nb$\nnext\n", &breaks, None).unwrap(), "<p><span class=\"math math-inline\">\\(a +\nb\\)</span><br>\nnext</p>\n");
+        let smart = MarkdownOptions { math: true, smart_punctuation: true, ..Default::default() };
+        assert_eq!(render("\"$x$\" -- $a--b$\n", &smart, None).unwrap(), "<p>“<span class=\"math math-inline\">\\(x\\)</span>” – <span class=\"math math-inline\">\\(a--b\\)</span></p>\n");
+        assert_eq!(math("![The $x$ axis](a.png)\n"), "<p><img src=\"a.png\" alt=\"The x axis\"></p>\n");
     }
 
     #[test]

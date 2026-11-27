@@ -8,6 +8,7 @@
 //! { "headingIds": "github", "headingAttributes": true, "footnotes": true, "taskLists": true,
 //!   "autolinks": true (or "fuzzy" or "email"), "breaks": false, "figures": false, "alerts": true, "containers": true, "definitionLists": false,
 //!   "smartPunctuation": false, "indentedCode": true, "highlight": true, "highlightCss": "/highlight.css",
+//!   "math": false,
 //!   "languages": [["chordpro", { "function": 0 }], ["cho", { "alias": "chordpro" }],
 //!                 ["snack", { "grammar": "grammars/snack.sublime-syntax" }]],
 //!   "headingIdsFunction": 1, "hooks": ["hooks/heading", "containers/note"],
@@ -70,6 +71,7 @@ pub fn setup(json: &str, root: &Path, function: &dyn Fn(u32) -> Value) -> Result
         indented_code: flag("indentedCode", defaults.indented_code),
         highlight: flag("highlight", defaults.highlight),
         highlight_css: j.get("highlightCss").and_then(J::as_str).map(String::from),
+        math: flag("math", defaults.math),
         ..defaults
     };
     if o.highlight && !cfg!(feature = "highlight") {

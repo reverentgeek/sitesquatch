@@ -18,6 +18,7 @@
 // grammars for fences it has highlighted before.
 import { readValues } from "../plugin-files.ts";
 import { kramdownHtml, restoreBlankLines, withKramdownIds } from "./kramdown-html.ts";
+import { lineOf, renderMath, siteKatex } from "./math.ts";
 import { hugoShortcodes, INLINE_SHORTCODE_MARKER, type InlineShortcode, inlineShortcodeNumber, pythonMarkdownAfter, pythonMarkdownBefore, pythonMarkdownBlocks, pythonMarkdownIds, pythonMarkdownSlug, sourceLinks } from "./markdown-dialects.ts";
 import { Buffer } from "node:buffer";
 import crypto from "node:crypto";
@@ -298,15 +299,15 @@ class WasmMarkdown implements Markdown {
 	}
 
 	#page(source: string, data: Data, file: string | undefined): string | Promise<string> {
-		if (!this.#functions.length) return this.#markdown(source, HOOKS, data, file);
+		if (!this.#functions.length) return this.#markdown(source, HOOKS, data, file, undefined, undefined, source);
 		let asked: Asked[];
 		try {
 			asked = this.#dryRun(source, file);
 		} catch {
 			// The render that counts says what's wrong.
-			return this.#markdown(source, HOOKS, data, file);
+			return this.#markdown(source, HOOKS, data, file, undefined, undefined, source);
 		}
-		return this.#answer(asked, (answers) => this.#markdown(source, HOOKS, data, file, answers));
+		return this.#answer(asked, (answers) => this.#markdown(source, HOOKS, data, file, answers, undefined, source));
 	}
 
 	html(text: string, inline: boolean): string {
@@ -385,9 +386,10 @@ class WasmMarkdown implements Markdown {
 	/**
 	 * One render. `answers` are what the site's functions gave, worked out before it; without
 	 * them they're called as the wasm asks, and one that answers with a promise is an error for
-	 * `what` (Markdown that's made at once, inside a template, can't wait for it).
+	 * `what` (Markdown that's made at once, inside a template, can't wait for it). `page` is the
+	 * page's own Markdown when this is it, where a formula KaTeX refuses is found by its line.
 	 */
-	#markdown(source: string, flags: number, data: Data, file: string | undefined, answers?: Answer[], what = "this Markdown"): string {
+	#markdown(source: string, flags: number, data: Data, file: string | undefined, answers?: Answer[], what = "this Markdown", page?: string): string {
 		const wasm = this.#ready();
 		const [ptr, lens] = wasm.input([source, file ?? ""]);
 		const frame = wasm.frame(this, data);
@@ -395,7 +397,16 @@ class WasmMarkdown implements Markdown {
 		const [status, text, thrown] = wasm.run(frame, () => wasm.x.md_render(this.#handle, ptr, lens[0], lens[1], flags), file);
 		this.#waited(frame, what);
 		if (status !== DONE) throw failure(text, thrown);
-		return putBackSlots(text);
+		const html = putBackSlots(text);
+		const math = this.#options.math;
+		if (math?.render !== "katex") return html;
+		// `page.md:12: ` is a line of the page's body, which the build counts on from its front
+		// matter; Markdown from a filter or a title is found by its file alone.
+		const where = (tex: string) => {
+			const line = page === undefined ? undefined : lineOf(page, tex);
+			return file === undefined ? "" : line === undefined ? `in ${file}: ` : `${file}:${line}: `;
+		};
+		return renderMath(html, math, () => siteKatex(this.#root), where);
 	}
 
 	/** A render that runs nothing of the site's: the calls to its functions it would make, in order. */
@@ -511,6 +522,7 @@ class WasmMarkdown implements Markdown {
 			highlight: o.highlight,
 			highlightCss: o.highlightCss,
 			highlightClasses: o.highlightClasses,
+			math: o.math !== null,
 			languages,
 			headingIdsFunction: o.sluggerFn ? number(o.sluggerFn as (...args: unknown[]) => unknown, "markdown.headingIds", true) : null,
 			// `slot` is ssqch's container: it always calls back, to be kept for its parent.
