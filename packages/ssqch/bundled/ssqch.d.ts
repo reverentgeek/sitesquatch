@@ -652,6 +652,24 @@ declare module "ssqch/vue" {
 	export function vuePlugin(options?: VuePluginOptions): BuiltinPlugin;
 }
 
+declare module "ssqch/react" {
+	import type { BuiltinPlugin } from "ssqch";
+	/** When an island runs in the browser: `"load"` (at once), `"idle"` (when the browser is idle) or `"visible"` (when it scrolls into view), or `false` for HTML only. */
+	export type ReactHydrate = false | "load" | "idle" | "visible";
+	export interface ReactPluginOptions {
+		/** Components every page and layout can use without importing them, by name: `{ Counter: "src/components/Counter.jsx" }`, paths from the project's root (or a package's name). Its default export, or else the export of its name. A Markdown page's own come from its imports (`import Counter from "./Counter.jsx"`). */
+		components?: Record<string, string>;
+		/** Run components in the browser too, as islands: one of `"load"`, `"idle"` or `"visible"` for all of them, or an object by component's name (`{ Counter: "visible" }`) for some. Its server HTML is wrapped in `<ssqch-react>`, and a page that has one gets one script, `/assets/react/islands.js`, which loads only its components. Default `false`: HTML only. */
+		hydrate?: ReactHydrate | Record<string, ReactHydrate>;
+		/** Where the styles the components import go: a path like `"/assets/react.css"` (the default), for the layout to link, or `false`. */
+		css?: string | false;
+		/** esbuild's options to add (`alias`, `define`, `loader`, `external`, `plugins`), as `esbuild.build()` takes them. */
+		esbuild?: Record<string, unknown>;
+	}
+	/** Renders the React components a page uses (`<Counter start={3} />`, imported in the page as MDX does or named in `components`) with the site's own React, react-dom and esbuild, at build time; with `hydrate`, as islands in the browser too. */
+	export function reactPlugin(options?: ReactPluginOptions): BuiltinPlugin;
+}
+
 declare module "ssqch/llms" {
 	import type { BuiltinPlugin } from "ssqch";
 	/** A page as `section` and `sort` get it. */

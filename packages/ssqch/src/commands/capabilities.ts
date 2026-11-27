@@ -21,6 +21,7 @@ export const MODULE_EXPORTS: ReadonlyArray<readonly [name: string, exports: read
 	["ssqch/llms", ["llmsPlugin"]],
 	["ssqch/robots", ["robotsPlugin"]],
 	["ssqch/vue", ["vuePlugin"]],
+	["ssqch/react", ["reactPlugin"]],
 	["ssqch/from-vitepress", ["fromVitepress"]],
 	["ssqch/from-mkdocs", ["fromMkdocs"]],
 	["ssqch/from-jekyll", ["fromJekyll"]],
