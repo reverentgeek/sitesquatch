@@ -29,7 +29,7 @@ export default defineConfig(({ env }) => ({
 		{ "src/_headers": "_headers" },
 		// The drawings have one home, docs/assets/, beside the README that floats them.
 		{ "../docs/assets/stickers": "assets/drawings/stickers" },
-		{ "../docs/assets/sitesquatch.svg": "assets/drawings/sitesquatch.svg" },
+		{ "../docs/assets/sitesquatch-head-shoulders.svg": "assets/drawings/sitesquatch-head-shoulders.svg" },
 		{ "../docs/assets/footprint.svg": "assets/drawings/footprint.svg" },
 	],
 
