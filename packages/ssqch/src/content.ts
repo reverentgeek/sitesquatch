@@ -33,7 +33,7 @@ export function headings(html: string): Heading[] {
 	return out;
 }
 
-/** The text of some HTML: tags removed, entities decoded, whitespace collapsed, and `aria-hidden="true"` elements left out. */
+/** The text of some HTML: tags removed, entities decoded, whitespace collapsed, and `aria-hidden="true"` elements left out, and MathML's `<annotation>` (the TeX KaTeX keeps beside the formula it rendered: `α`, not `α\alpha`). */
 export function htmlText(html: string): string {
 	let text = "";
 	let hidden = 0;
@@ -49,7 +49,7 @@ export function htmlText(html: string): string {
 			continue;
 		}
 		if (found[1] === "/") hidden = Math.max(0, hidden - 1);
-		else if (hidden > 0 || HIDDEN.test(attrs)) hidden++;
+		else if (hidden > 0 || HIDDEN.test(attrs) || name === "annotation") hidden++;
 	}
 	if (hidden === 0) text += html.slice(last);
 	return splitWhitespace(decodeEntities(text)).join(" ");
