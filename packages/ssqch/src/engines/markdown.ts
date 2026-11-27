@@ -37,6 +37,8 @@ import { WebAssembly } from "./webassembly.ts";
 import type { WasmImports, WasmMemory, WasmModule } from "./webassembly.ts";
 
 export interface Markdown extends TemplateEngine {
+	/** Whether `markdown.math` is on. */
+	readonly math: boolean;
 	/** `markdown(text)` in a template: the site's options and render hooks (which get no page data), or without the `<p>` when `inline`. */
 	html(text: string, inline: boolean): string;
 	/** The `ssqch` module's `markdown()`: the site's options, without render hooks. */
@@ -198,6 +200,11 @@ class WasmMarkdown implements Markdown {
 	#setup: { json: string; files: Map<string, Buffer> } | undefined;
 	#handle = -1;
 	#wasm: Wasm | undefined;
+
+	/** Whether `markdown.math` is on: TeX between `$`s is read as math. */
+	get math(): boolean {
+		return this.#options.math !== null && this.#options.math !== undefined;
+	}
 
 	constructor(options: MarkdownOptions, root: string, input?: string) {
 		this.#options = options;

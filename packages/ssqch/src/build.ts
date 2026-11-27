@@ -26,6 +26,7 @@ import { hearOpened } from "./engines/engine.ts";
 import { hearSiteReads } from "./serve/site-reads.ts";
 import type { RenderContext } from "./engines/engine.ts";
 import { beginFenceCache, rendering as markdownRendering, saveFenceCache, writeHighlightCss } from "./engines/markdown.ts";
+import { templateCodeInMath } from "./engines/math.ts";
 import * as equivalents from "./equivalents.ts";
 import { measure, overBudget } from "./footprint.ts";
 import { globBase, globSet, isGlob } from "./glob.ts";
@@ -116,6 +117,7 @@ export async function build(config: Config): Promise<BuildReport> {
 	const overCollections = (p: Page) => typeof p.data.pagination?.data === "string" && p.data.pagination.data.startsWith("collections.");
 	const wanted = pages.filter((p) => p.output !== null || p.inCollections);
 	gitDatesNote(site, wanted);
+	warnTemplateCodeInMath(site);
 	const includesKey = [...collectionIncludes].sort(compareText).join("\0");
 	const late = new Set(wanted.filter((p) => usesCollectionsKept(p.tpl, collectionIncludes, includesKey) || overCollections(p)));
 	await site.buildCollections();
@@ -327,6 +329,25 @@ let renderedCount: [number, number, string?] = [0, 0];
 export const lastRendered = (): [number, number, string?] => renderedCount;
 
 /** Whether this process has said why an undated page's save rendered the pages that list it. */
+/**
+ * With `markdown.math`: a formula with template code in it, on a page a template engine reads
+ * before Markdown (`.md` through Jinja, the default), comes out without it and without a word:
+ * `\frac{{a}}{b}` is `\frac{b}`. Said once a page, with the first formula's line and the fixes.
+ */
+function warnTemplateCodeInMath(site: Site): void {
+	if (!site.markdown.math || site.config.quiet) return;
+	for (const tpl of site.tpls) {
+		const at = tpl.engines.indexOf("md");
+		if (at <= 0 || tpl.engines.slice(0, at).every((e) => e === "html" || e === "txt")) continue;
+		const found = templateCodeInMath(tpl.body);
+		if (!found.length) continue;
+		const file = site.display(tpl.input);
+		const line = found[0].line + tpl.bodyLine - 1;
+		const more = found.length > 1 ? ` (and ${found.length - 1} more formula${found.length === 2 ? "" : "s"} on this page)` : "";
+		warn(warning("template", `${file}:${line}: the formula $${found[0].tex}$ has template code in it (\`{{\`, \`{%\` or \`{#\`), which ${tpl.engines[0]} reads before Markdown, so it won't reach the page as written${more}. Put a space between the braces (\`\\frac{ {a} }{b}\`, which TeX ignores), wrap it in \`{% raw %}\`, or give the page \`render: md\``, { file, line }));
+	}
+}
+
 let saidUndated = false;
 let saidGitDates = false;
 

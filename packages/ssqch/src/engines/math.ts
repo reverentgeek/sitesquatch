@@ -111,3 +111,27 @@ function unescape(text: string): string {
 	if (!text.includes("&")) return text;
 	return text.replace(/&(?:amp|lt|gt|quot);/g, (entity) => (entity === "&amp;" ? "&" : entity === "&lt;" ? "<" : entity === "&gt;" ? ">" : "\""));
 }
+
+/**
+ * The formulas in a page's Markdown, before its template engine runs, that have template code in
+ * them (`\frac{{a}}{b}`, `{%`, `{#`): Jinja and Nunjucks read it first, and `{{a}}` prints nothing,
+ * so the formula is quietly wrong. Code and `{% raw %}` are skipped. Each by its line in `body`.
+ */
+export function templateCodeInMath(body: string): Array<{ line: number; tex: string }> {
+	if (!body.includes("$") || !/\{[{%#]/.test(body)) return [];
+	// Code, and what `{% raw %}` keeps, aren't formulas the template engine reads: blanked, lines kept.
+	const blank = (m: string) => m.replace(/[^\n]/g, " ");
+	const text = body
+		.replace(/^(\s*)(`{3,}|~{3,})[^\n]*\n[\s\S]*?^\1\2[ \t]*$/gm, blank)
+		.replace(/\{%-?\s*raw\s*-?%\}[\s\S]*?\{%-?\s*endraw\s*-?%\}/g, blank)
+		.replace(/`[^`\n]+`/g, blank);
+	const found: Array<{ line: number; tex: string }> = [];
+	// Display math first, then inline: an opening `$` not followed by a space, a closing one not after one.
+	const pattern = /\$\$([\s\S]+?)\$\$|(?<![\\$])\$(?![\s$])((?:\\\$|[^$\n])*?[^\s\\])\$(?!\d)/g;
+	for (const m of text.matchAll(pattern)) {
+		const tex = m[1] ?? m[2];
+		if (!/\{[{%#]/.test(tex)) continue;
+		found.push({ line: text.slice(0, m.index).split("\n").length, tex });
+	}
+	return found;
+}

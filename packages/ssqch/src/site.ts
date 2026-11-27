@@ -70,6 +70,8 @@ export interface Tpl {
 	fileDate: Date | undefined;
 	/** `page.lastModified`, with the `lastModified` setting. */
 	lastModified: Date | undefined;
+	/** The file's line its body starts on (1 with no front matter), for a warning about the body. */
+	bodyLine: number;
 	/** `page.updated`, with `lastModified: "git"`: its last commit when an earlier one added it, or its file's time when it has changes that aren't committed. */
 	updated: Date | undefined;
 	/** When its file last changed in a commit, with `dateFallback: "git"`, for a page with no date of its own. */
@@ -1032,6 +1034,7 @@ export class Site {
 				input: file,
 				rel,
 				body,
+				bodyLine: src.length - body.length > 0 ? src.slice(0, src.length - body.length).split("\n").length : 1,
 				data,
 				engines,
 				layouts: chain,

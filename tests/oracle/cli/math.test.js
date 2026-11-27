@@ -58,8 +58,10 @@ test("markdown_math_and_template_code", () => {
 	// Jinja runs first: `{{a}}` is an undefined variable, printed as nothing. A space between the
 	// braces (TeX ignores it) or `{% raw %}` keeps the formula as written, as the docs say.
 	write(dir, { "src/index.md": "Lost $\\frac{{a}}{b}$, kept $\\frac{ {a} }{b}$ and {% raw %}$\\frac{{a}}{b}$ and $\\{#1\\}${% endraw %}.\n" });
-	let r = ssqch(["build", "--root", dir, "-q"]);
+	let r = ssqch(["build", "--root", dir]);
 	assert.ok(r.ok, r.log);
+	// The one Jinja changed is said, with its line, and the two kept aren't.
+	assert.ok(r.log.includes("src/index.md:1: the formula $\\frac{{a}}{b}$ has template code in it") && !r.log.includes("more formula"), r.log);
 	assert.equal(read(dir, "dist/index.html"), "<p>Lost <span class=\"math math-inline\">\\(\\frac{b}\\)</span>, kept <span class=\"math math-inline\">\\(\\frac{ {a} }{b}\\)</span> and <span class=\"math math-inline\">\\(\\frac{{a}}{b}\\)</span> and <span class=\"math math-inline\">\\(\\{#1\\}\\)</span>.</p>\n");
 	// `{%` is a template error on the formula's line.
 	write(dir, { "src/index.md": "---\ntitle: T\n---\nOne.\n\nThen $\\{%a\\}$.\n" });

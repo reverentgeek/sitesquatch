@@ -13,6 +13,13 @@ where that version matches.
 
 ### Added
 
+- Math in Markdown: with `markdown: { math: true }`, TeX between `$` and `$$` reaches the page
+  as you wrote it, ready for KaTeX's auto-render or MathJax, where Markdown used to eat its
+  backslashes, braces and asterisks. Prices stay prices (`$5 and $10`, `$20-$30`), and `\$` is a
+  dollar sign. `math: { render: "katex" }` renders every formula while the site builds, with the
+  site's own `katex` package, so pages need only KaTeX's stylesheet, and a formula KaTeX can't
+  read stops the build at its page and line. A formula with template code in it (`\frac{{a}}{b}`,
+  which Jinja reads first) is a warning at its line. `ssqch docs math` has the details.
 - `ssqch patrol` warns when the site's address is still a placeholder (`placeholder-url`): a build
   whose canonical links, sitemap, robots.txt or llms.txt point at example.com, .net or .org, which
   the starters' `url` is until it's changed. A site built from a starter checked all clear.
