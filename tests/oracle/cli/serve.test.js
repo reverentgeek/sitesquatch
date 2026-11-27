@@ -361,6 +361,30 @@ test("serve_reads_an_edit_that_keeps_the_files_size_and_time", async () => {
 	}
 });
 
+// Found moving hexo.io and redux.js.org (2026-11-27): an includes folder outside the input
+// (`dirs.includes: "../theme"`) and a content folder linked into the input weren't watched, so an
+// edit to a layout, or to a linked page, rebuilt nothing and the page stayed as it was.
+test("serve_watches_includes_outside_the_input_and_linked_folders", async (t) => {
+	const dir = tempDir("serve-outside");
+	write(dir, {
+		"site/ssqch.config.js": "export default { dirs: { input: \"src\", output: \"dist\", includes: \"../../theme\" }, data: { layout: \"base.jinja\" } };\n",
+		"site/src/index.md": "Home\n",
+		"theme/base.jinja": "<main>{{ content | safe }}</main>\n",
+		"docs/trail.md": "Cedar Trail\n",
+	});
+	try { fs.symlinkSync(path.join(dir, "docs"), path.join(dir, "site/src/docs"), "dir"); } catch (e) { return t.skip(`can't make links here: ${e.code}`); }
+	const server = start(["serve", "--port", "0", "--root", path.join(dir, "site")]);
+	try {
+		const home = path.join(dir, "site/dist/index.html");
+		await waitFor(home, "<main>");
+		await waitFor(path.join(dir, "site/dist/docs/trail/index.html"), "Cedar Trail");
+		await changeAndWait(path.join(dir, "theme/base.jinja"), "<article>{{ content | safe }}</article>\n", home, "<article>");
+		await changeAndWait(path.join(dir, "docs/trail.md"), "Old Growth Trail\n", path.join(dir, "site/dist/docs/trail/index.html"), "Old Growth Trail");
+	} finally {
+		await server.stop();
+	}
+});
+
 // While serving, an edit to one page's text renders that page
 // alone, and the image plugin asks for the other pages' pictures again (a replay of what they asked
 // when they last rendered), so prune and leaveNoTrace keep them, and the llms plugin its text. A

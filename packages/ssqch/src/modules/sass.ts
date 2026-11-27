@@ -140,6 +140,10 @@ export function compressCss(css: string, shown = "CSS"): string {
 	} catch (e) {
 		throw new BuildError(messageOf(e).replace(`compiling ${shown}: ${shown}: `, `${shown}: `).replaceAll(name, shown));
 	}
+	// grass starts compressed CSS that has a character outside ASCII with a byte-order mark, its
+	// way of naming the encoding without `@charset`. Inside `<style>` it's a stray character, and a
+	// stylesheet is read as UTF-8 without it, so it goes, as `sassPlugin()`'s own files lose it.
+	if (out.charCodeAt(0) === 0xfeff) out = out.slice(1);
 	if (compressedCss.size >= KEPT_CSS) compressedCss.delete(compressedCss.keys().next().value!);
 	compressedCss.set(css, out);
 	return out;

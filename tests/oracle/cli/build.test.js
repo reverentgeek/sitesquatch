@@ -243,6 +243,12 @@ export default {
 	w("src/articles/articles.data.js", "export default { computed: { page: (data) => ({ ...data.page, title: data.title }) } };\n");
 	r = ssqch(["build", "--root", d]);
 	assert.ok(!r.ok && r.log.includes("`page` in computed isn't applied, because `page` is ssqch's"), r.log);
+	// DELIBERATE (0.16.2): a computed `render` that depends on the page is refused, and one that's
+	// plain text is used as written, as `layout` is. It was ignored without a word, since the engines
+	// are chosen before computed runs (redux.js.org's move, #14).
+	w("src/articles/articles.data.js", "export default { computed: { render: () => \"md\" } };\n");
+	r = ssqch(["build", "--root", d]);
+	assert.ok(!r.ok && r.log.includes("`render` in computed can't depend on the page: the engines are chosen before computed runs"), r.log);
 	w("src/articles/articles.data.js", "export default {};\n");
 	// A link to nothing is named, not skipped.
 	if (unix) {
@@ -368,6 +374,82 @@ test("page_updated_is_a_commit_after_the_first", () => {
 	const second = spawnSync("git", ["-C", dir, "-c", "user.email=ranger@example.com", "-c", "user.name=Ranger", "commit", "-qam", "Fresh tracks"], { encoding: "utf8", env: { ...process.env, GIT_AUTHOR_DATE: "2026-04-02T12:00:00Z", GIT_COMMITTER_DATE: "2026-04-02T12:00:00Z" } });
 	assert.equal(second.status, 0, second.stderr);
 	assert.deepEqual(build(), ["updated 2026-04-02T12:00:00.000Z ", "as posted"], "the second commit");
+});
+
+// Found moving hexo.io (2026-11-27, #11): a page whose layout came from global data saw the
+// inner layout's own `layout` as its `layout`, so a computed `layout` that returned it unchanged
+// lost the page's layout, and `trace` named the config's data for the outer layout's name.
+test("a_global_layout_stays_the_pages_layout", () => {
+	const dir = tempDir("global-layout");
+	write(dir, {
+		"ssqch.config.js": "export default { dirs: { input: \"src\" }, data: { layout: \"page.jinja\", computed: { layout: (d) => d.layout } } };\n",
+		"src/a.md": "Cedar\n",
+		"src/_includes/page.jinja": "---\nlayout: base.jinja\n---\n<main>{{ content | safe }}</main>",
+		"src/_includes/base.jinja": "<body data-layout=\"{{ layout }}\">{{ content | safe }}</body>",
+	});
+	const r = ssqch(["build", "--root", dir, "-q"]);
+	assert.ok(r.ok, r.log);
+	assert.equal(read(dir, "_site/a/index.html"), "<body data-layout=\"page.jinja\"><main><p>Cedar</p>\n</main></body>");
+	const traced = ssqch(["trace", "/a/", "--root", dir, "--field", "layout"]);
+	assert.ok(traced.log.startsWith("layout = \"page.jinja\""), traced.log);
+});
+
+// Found moving hexo.io (2026-11-27, #15 and the check): a global `page` never reached a page
+// (ssqch sets its own), without a word, and a `.njk` file the site's own engine renders (Hexo's
+// Nunjucks, with Hexo's `site.posts`) was told its `site.posts` was Jekyll's and empty.
+test("global_page_is_said_and_a_sites_own_engine_keeps_its_globals", () => {
+	const dir = tempDir("global-page");
+	write(dir, {
+		"ssqch.config.js": "export default { templateFormats: [\"njk\"], engines: { njk: (source) => `own: ${source.length}` }, data: { page: { title: \"Cedar\" } } };\n",
+		"list.njk": "{% for p in site.posts %}{{ p.title }}{% endfor %}",
+	});
+	const r = ssqch(["build", "--root", dir]);
+	assert.ok(r.ok, r.log);
+	assert.ok(r.log.includes("warn: global data `page` isn't used, because `page` is ssqch's"), r.log);
+	assert.ok(!r.log.includes("site.posts"), r.log);
+});
+
+// Found moving redux.js.org (2026-11-27, N1): the docs were `../docs` beside the site's folder,
+// read through links in its input, and `git log` read only the project's folder, so every
+// "Last updated" was the clone's day and `trace` said "it isn't in a commit yet". Pages get
+// their commits wherever they are: beside the project, through a link, in another repository.
+test("git_dates_for_pages_outside_the_project", (t) => {
+	const dir = tempDir("git-outside");
+	const at = (date) => ({ ...process.env, GIT_AUTHOR_DATE: date, GIT_COMMITTER_DATE: date });
+	const git = (cwd, date, ...args) => spawnSync("git", ["-C", cwd, "-c", "user.email=ranger@example.com", "-c", "user.name=Ranger", ...args], { encoding: "utf8", env: at(date) });
+	if (git(dir, "2026-01-01T00:00:00Z", "--version").status !== 0) return t.skip("no git");
+	const page = "{{ page.lastModified.toISOString() }}|{{ page.updated.toISOString() if page.updated else 'none' }}";
+	write(dir, {
+		"website/ssqch.config.js": "export default { dirs: { input: \"src\" }, lastModified: \"git\" };\n",
+		"website/src/home.jinja": page,
+		"docs/trail.jinja": page,
+		"other/creek.jinja": page,
+	});
+	git(dir, "", "init", "-q");
+	git(dir, "2026-02-01T12:00:00Z", "add", "website", "docs");
+	git(dir, "2026-02-01T12:00:00Z", "commit", "-qm", "First tracks");
+	fs.appendFileSync(path.join(dir, "docs/trail.jinja"), " ");
+	git(dir, "2026-03-01T12:00:00Z", "commit", "-qam", "Fresh tracks");
+	// A second repository, beside the first one's files and not in them.
+	fs.rmSync(path.join(dir, "other"), { recursive: true });
+	const other = tempDir("git-outside-other");
+	write(other, { "creek.jinja": page });
+	git(other, "", "init", "-q");
+	git(other, "2026-04-01T12:00:00Z", "add", "-A");
+	git(other, "2026-04-01T12:00:00Z", "commit", "-qm", "Other tracks");
+	try {
+		fs.symlinkSync(path.join(dir, "docs"), path.join(dir, "website/src/docs"), "dir");
+		fs.symlinkSync(other, path.join(dir, "website/src/other"), "dir");
+	} catch (e) {
+		return t.skip(`can't make links here: ${e.code}`);
+	}
+	const r = ssqch(["build", "--root", path.join(dir, "website")]);
+	assert.ok(r.ok && !r.log.includes("note:"), r.log);
+	assert.equal(read(dir, "website/_site/home/index.html"), "2026-02-01T12:00:00.000Z|none");
+	assert.equal(read(dir, "website/_site/docs/trail/index.html"), "2026-03-01T12:00:00.000Z|2026-03-01T12:00:00.000Z ");
+	assert.equal(read(dir, "website/_site/other/creek/index.html"), "2026-04-01T12:00:00.000Z|none");
+	const traced = JSON.parse(ssqch(["trace", "/docs/trail/", "--root", path.join(dir, "website"), "--format", "json"]).stdout);
+	assert.equal(traced.lastModified.from, "git: the last commit to src/docs/trail.jinja", JSON.stringify(traced.lastModified));
 });
 
 // Found in several migrations: an undated page's date was its file's time, which is when the

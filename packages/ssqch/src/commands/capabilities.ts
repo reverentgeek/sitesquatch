@@ -125,7 +125,8 @@ function text(caps: Capabilities): string {
 	row("Globals", caps.globals.join(", "));
 	row("Image formats", caps.imageFormats.join(", "));
 	row("Starters", `${caps.starters.join(", ")} (in ${caps.starterEngines.join(", ")})`);
-	row("Scout reads", caps.importers.join(", "));
+	// `importers` (the JSON's, 0.7's key) is the generators scout reads in depth; it reads more lightly too.
+	row("Scout reads", `${caps.importers.join(", ")} and vitepress in depth; docusaurus, astro, hexo, gatsby and next lightly (\`ssqch scout --help\`)`);
 	return out + "\n--format json has all of it, with each module's exports.\n";
 }
 

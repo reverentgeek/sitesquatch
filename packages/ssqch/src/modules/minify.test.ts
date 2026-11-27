@@ -52,6 +52,10 @@ test("minifyPlugin() compresses inline CSS, XML and JSON when asked", async () =
 	assert.equal(await plain.transforms[0][1]("<style> .a { b: c } </style>", at("/site/_site/index.html")), "<style>.a { b: c }</style>");
 	assert.equal(minifyCss(".a {\n  margin: 0 auto;\n}\n"), ".a{margin:0 auto}");
 	assert.throws(() => minifyCss(".a { $x: 1; }"), /minifyCss\(\): /);
+	// Found moving hexo.io (#31): grass starts compressed CSS with a character outside ASCII with a
+	// byte-order mark, which landed inside <style> on every page.
+	assert.equal(minifyCss(".a { content: \"é\" }"), ".a{content:\"é\"}");
+	assert.equal(await transform("<style>.a { content: \"→\" }</style>", at("/site/_site/index.html")), "<style>.a{content:\"→\"}</style>");
 	assert.equal(minifyXml("<a>\n <b>Hi <![CDATA[x]]></b>\n</a>"), "<a><b>Hi <![CDATA[x]]></b></a>");
 	assert.equal(minifyJson("not json"), "not json");
 });

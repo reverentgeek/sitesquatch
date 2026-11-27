@@ -36,6 +36,46 @@ where that version matches.
 - `ssqch build --format json` gives a content error's or warning's `line` when it names a field
   the front matter sets (a `date` that isn't a date, a schema's problem, Jekyll's `published`),
   the line the text output's code frame points at.
+- `ssqch scout` reads Gatsby and Next.js sites (lightly, as Astro's): their React pages and
+  routes, GraphQL queries, `createPages`, `static/` or `public/`, and each plugin with ssqch's
+  way. `ssqch build` in a Gatsby folder sent people to scout, which refused it. `ssqch docs --from
+  next` answers too. Scout's Hexo report says what the theme is written in (it said "EJS,
+  Nunjucks, Pug" for any), lists the site's `scripts/`, the theme's language files and
+  `post_asset_folder`, names `feedPlugin()` for the feed and `ssqch serve` for hexo-server, marks
+  the feed, sitemap and minifier done once the config has their plugins, and doesn't count a tag
+  written in a code block.
+- A date can be written with slashes (`2026/05/08`, `2026/05/08 12:00`), as Hexo writes them, and
+  is read as the same date with dashes. The docs list the forms a date can take.
+- A computed `render` written as plain text (`computed: { render: "md" }`) chooses the page's
+  engines, as a computed `layout` does.
+
+### Fixed
+
+- `minifyPlugin({ css: true })` and `minifyCss()` no longer start CSS that has a character outside
+  ASCII with a byte-order mark, which landed inside `<style>` on every page.
+- `lastModified: "git"` and `dateFallback: "git"` date pages outside the project's folder by
+  their commits too: a content folder beside it (`../docs`), one linked into the input, and one
+  in another repository. They had their files' times, and `ssqch trace` said they weren't in a
+  commit.
+- `ssqch serve` watches an includes, layouts or data folder outside the input folder, and what a
+  linked folder in the input leads to: an edit there rebuilt nothing.
+- A computed `render` that depends on the page is an error that says where to set it, where it
+  was ignored (the engines are chosen before computed runs).
+- A page whose layout comes from global data keeps that name as its `layout`: it was the inner
+  layout's own `layout`, so a computed `layout` that returned it unchanged lost the page's
+  layout, and `ssqch trace` named the wrong place for it.
+- Global data named `page` is a warning: ssqch's own `page` replaces it on every page.
+- `imagePlugin()` and `feedHtml()` find an image in a folder `passthrough` publishes (a site's
+  `static/`), where they said it wasn't found, and a missing image's warning says each place it
+  looked.
+- A `<Function>` written inside an attribute (`title="value <Function>"`) isn't taken for a
+  component, and a template the site's own engine renders isn't told its `site.posts` is
+  Jekyll's.
+- `ssqch scout`: `--from` for a build Netlify publishes from `/public`, the config's own file
+  name ("with ssqch.config.mjs"), a config that calls `readData()` when scouting it from another
+  folder, and `--reference` from where scout runs when it isn't in the scouted folder.
+- The error for an unknown template format names `templateFormats` in a JavaScript config, where
+  it said TOML's `template_formats`. `ssqch capabilities` lists every generator scout reads.
 
 ## 0.16.1 - 2026-11-26
 

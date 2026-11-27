@@ -68,8 +68,12 @@ export function renderComponents(html: string, render: RenderComponent, data: Re
 		// The name ends where the tag's name does: `<Trail-Map>` is a custom element, not `Trail`.
 		const name = /^<([A-Za-z][A-Za-z0-9]*)(?=[\s/>])/.exec(html.slice(lt, lt + 80))?.[1];
 		if (name === undefined || !isComponentName(name)) {
-			out += "<";
-			i = lt + 1;
+			// Another element's start tag is copied whole, so a `<Function>` written in one of its
+			// attributes (`title="value <string> | <Function>"`, on hexo.io's API pages) is text.
+			const element = name === undefined ? undefined : openTag(html, lt + 1 + name.length);
+			const stop = element === undefined ? lt + 1 : element.end;
+			out += html.slice(lt, stop);
+			i = stop;
 			continue;
 		}
 		const open = openTag(html, lt + 1 + name.length);

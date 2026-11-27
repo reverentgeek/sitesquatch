@@ -41,7 +41,7 @@ export default {
 <picture>{{ "src/img/ridge-tall.jpg" | crop("(max-width: 40rem)", "100vw") }}<img src="/img/ridge-wide.jpg" alt="The ridge"></picture>
 ```
 
-The `<source>`s point at files `image()` wrote, so the plugin leaves them as they are. `image()` takes a path from the project (`src/img/...`), and the `<img>` a path on the site (`/img/...`).
+The `<source>`s point at files `image()` wrote, so the plugin leaves them as they are. `image()` takes a path from the project (`src/img/...`), and the `<img>` a path on the site (`/img/...`). Call it from a filter, a data function or a hook, which run during the build: called while the config file itself loads (at its top level), the build hasn't started, and it's an error.
 
 ## A feed for a blog
 

@@ -139,7 +139,7 @@ const COMMANDS: Array<Command & { stage?: number; own?: boolean }> = [
 		name: "scout", helpGlobals: [], strictGlobals: true,
 		about: "Scout a site built with another generator: what moving it to ssqch takes, with file and line, and what's left during a move. Changes nothing unless asked",
 		options: [
-			{ long: "from", value: "GENERATOR", help: "The generator the site is built with, when it isn't the one scout finds: eleventy, jekyll, zola, hugo, mkdocs, docusaurus, astro, vitepress or hexo" },
+			{ long: "from", value: "GENERATOR", help: "The generator the site is built with, when it isn't the one scout finds: eleventy, jekyll, zola, hugo, mkdocs, docusaurus, astro, vitepress, hexo, gatsby or next" },
 			FORMAT,
 			{ long: "write-draft", help: "Write the draft's new files (a config draft, directory data, includes, hooks); never overwrites a file" },
 			{ long: "patch", value: "FILE", help: "Write the mechanical edits (renames, a data file's name, an attribute) to FILE as a patch to review; nothing is applied" },

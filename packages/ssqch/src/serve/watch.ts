@@ -149,6 +149,8 @@ export class Watcher {
 	private timer: NodeJS.Timeout | undefined;
 	/** With `poll`: the time until the next look, in ms. */
 	pollEvery = POLL_MS;
+	/** The real folders of linked trees `followLinks` watches, outside the folders asked for: sources too. */
+	readonly linked = new Set<string>();
 	/** A folder below a watched one that couldn't be watched itself. */
 	onError: (dir: string, e: unknown) => void = () => {};
 
@@ -178,6 +180,7 @@ export class Watcher {
 		const top: Watched = { recursive, folders: new Map(), real: new Set() };
 		if (this.strategy === "tree" || !recursive) this.listen(top, dir, recursive && this.strategy === "tree");
 		else this.walk(top, dir, true);
+		if (this.strategy === "tree" && recursive) this.followLinks(top, dir);
 		this.watched.set(dir, top);
 	}
 
@@ -232,6 +235,33 @@ export class Watcher {
 		top.folders.set(dir, { watcher, real, children: new Set() });
 		// Every folder below the top is found from the one it's in (`walk`).
 		if (path.dirname(dir) !== dir) top.folders.get(path.dirname(dir))?.children.add(dir);
+	}
+
+	/**
+	 * With `tree`: a linked folder below `dir` whose target is outside it gets a tree of its own,
+	 * since the system's watch of a tree doesn't follow links, and the build does (the redux.js.org
+	 * move's docs were linked in from beside the site, and an edit to one rebuilt nothing). Its
+	 * changes are reported by their real paths. A link made after the watch began isn't followed.
+	 */
+	private followLinks(top: Watched, dir: string): void {
+		const trees = [realPath(dir)];
+		const visit = (folder: string, depth: number) => {
+			let entries: fs.Dirent[];
+			try { entries = fs.readdirSync(folder, { withFileTypes: true }); } catch { return; }
+			for (const entry of entries) {
+				if (SKIPPED.has(entry.name) || depth > 32) continue;
+				const file = path.join(folder, entry.name);
+				if (entry.isDirectory()) { visit(file, depth + 1); continue; }
+				if (!entry.isSymbolicLink() || !isDir(file)) continue;
+				const real = realPath(file);
+				if (trees.some((tree) => real === tree || real.startsWith(tree + path.sep))) continue;
+				try { this.listen(top, real, true, real); } catch (e) { this.onError(file, e); continue; }
+				trees.push(real);
+				this.linked.add(real);
+				visit(real, depth + 1);
+			}
+		};
+		visit(dir, 0);
 	}
 
 	/** A watcher for `dir` and each folder below it. Linked folders are followed, as the build follows them. */

@@ -1281,13 +1281,18 @@ function checkForeignGlobals(site: Site): void {
 	// Each template's text, with the pages it makes (none for layouts and includes).
 	const sources: Array<[string, string, Tpl | undefined]> = [];
 	const seen = new Set<string>();
+	// A language the site's own engine renders (`engines: { njk }`) has the globals that engine
+	// gives it: hexo.io's move rendered Hexo's theme with Hexo's Nunjucks, whose `site.posts` is
+	// Hexo's, and was told it was Jekyll's and empty.
+	const own = (ext: string) => site.config.engines.has(ext);
 	for (const tpl of site.tpls) {
 		// A page no template language reads (`render: md`, plain HTML) prints `{{ eleventy.generator }}`
 		// as it's written: a page about another generator, not a use of it. Its layouts still count.
-		if (tpl.engines.some((e) => e !== "md" && e !== "html" && e !== "txt")) sources.push([site.display(tpl.input), tpl.body, tpl]);
+		if (tpl.engines.some((e) => e !== "md" && e !== "html" && e !== "txt" && !own(e))) sources.push([site.display(tpl.input), tpl.body, tpl]);
 		for (const layout of tpl.layouts) {
 			if (seen.has(layout.path)) continue;
 			seen.add(layout.path);
+			if (own(path.extname(layout.path).slice(1).toLowerCase())) continue;
 			sources.push([site.display(layout.path), layout.body, undefined]);
 		}
 	}

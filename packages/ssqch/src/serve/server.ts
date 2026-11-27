@@ -531,7 +531,7 @@ async function watch({ builder, live, args, quiet, startedTools, firstBuild, say
 				return !seen || before !== now;
 			});
 			// Folders watched for a config file see their other files change too.
-			const inSources = (file: string) => watchPaths.some((p) => isInside(p, file)) || isConfig(file) || builder.read.has(file);
+			const inSources = (file: string) => watchPaths.some((p) => isInside(p, file)) || [...watcher.linked].some((p) => isInside(p, file)) || isConfig(file) || builder.read.has(file);
 			// The checked mode's race needs what each source held when the rebuild began. Windows
 			// names the folder a file changed in, and the file a moment later: the files directly in
 			// a folder named are noted now, so the late event for one the rebuild read isn't a change

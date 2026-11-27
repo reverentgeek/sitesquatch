@@ -787,7 +787,26 @@ test("scout_lists_what_docusaurus_astro_vitepress_and_hexo_sites_use", () => {
 	const hexo = lines(other(site("hexo-list", { "_config.yml": "", "scaffolds/post.md": "", "source/_posts/pine.md": "Hi\n<!-- more -->\n{% asset_img stump.png %}\n", "package.json": "{\"dependencies\":{\"hexo\":\"7\",\"hexo-generator-feed\":\"3\"}}" }), "hexo"));
 	has(hexo, "not-yet: source/_posts/pine.md:3: tag plugins");
 	has(hexo, "ssqch: scaffolds: scaffolds are ssqch's blueprints");
-	has(hexo, "ssqch: package.json: hexo-generator-feed: `rssPlugin()`");
+	// hexo.io's move (2026-11-27): the feed is `feedPlugin()`, as the trailhead says; `hexo-server`
+	// is `ssqch serve`; the theme's languages come from its files; a tag in a code block isn't a use.
+	has(hexo, "ssqch: package.json: hexo-generator-feed: `feedPlugin()`");
+	const io = lines(other(site("hexo-io", {
+		"_config.yml": "post_asset_folder: true\n",
+		"source/_posts/pine.md": "Hi\n\n```\n{% youtube abc %}\n```\n\nAnd `{% note %}` too.\n",
+		"source/_posts/cedar.md": "{% raw %}{{ x }}{% endraw %}\n",
+		"themes/navy/layout/layout.njk": "{{ body }}",
+		"themes/navy/source/css/style.styl": "a\n  color red\n",
+		"themes/navy/languages/en.yml": "home: Home\n",
+		"scripts/helpers.js": "hexo.extend.helper.register(\"a\", () => 1);\nhexo.extend.filter.register(\"after_generate\", () => {});\n",
+		"package.json": "{\"dependencies\":{\"hexo\":\"8\",\"hexo-server\":\"3\",\"hexo-renderer-stylus\":\"3\"}}",
+	}), "hexo"));
+	assert.ok(!io.some((line) => line.includes("tag plugins")), io.join("\n"));
+	has(io, "the theme's files (1 Nunjucks, 1 Stylus)");
+	has(io, "1 theme language files");
+	has(io, "`scripts/` (1 file: 1 helper (filters), 1 filter (transforms or hooks))");
+	has(io, "post_asset_folder: true");
+	has(io, "ssqch: package.json: hexo-server: `ssqch serve`");
+	has(io, "site: package.json: hexo-renderer-stylus: Stylus runs as a `beforeBuild` command");
 });
 
 test("scout_counts_what_the_sites_config_sets_as_done", async () => {

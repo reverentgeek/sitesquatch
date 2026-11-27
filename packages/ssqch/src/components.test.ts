@@ -49,3 +49,11 @@ test("bindings_read_the_pages_data_and_vues_literals", () => {
 	assert.deepEqual(seen[0].props, { count: 2, "data-size": "lg", dataSize: "lg", disabled: true });
 	assert.equal(seen[0].attrs, " data-size=\"lg\" disabled");
 });
+
+// hexo.io's API pages had `title="value <string> | <Function>"`: an attribute's text isn't a tag.
+test("a_tag_written_in_an_attribute_is_text", () => {
+	const unknown: string[] = [];
+	const html = `<a href="#x" title="value <string> | <Function>">value</a> <Badge text="Pine" />`;
+	assert.equal(renderComponents(html, render, {}, (name) => unknown.push(name)), `<a href="#x" title="value <string> | <Function>">value</a> <span class="badge">Pine</span>`);
+	assert.deepEqual(unknown, []);
+});
